@@ -124,11 +124,11 @@
       } else {
         const fitHalf = (edge.fit || 0) / 2;
         const e = fitHalf >= 0 ? Math.min(fitHalf, w / 2 - 0.05) : Math.max(fitHalf, -(w / 2 - 0.05));
-        // chanfro: bisela a borda do material na boca do rasgo, entrando para dentro do rasgo
-        // (de a+e até a+e+c), nunca para fora (o que invadiria o dente vizinho)
+        // chanfro nos cantos do material na boca do rasgo (ponta do dente "fêmea")
+        // limitado também por e (quando positivo): o canto não pode passar de a/b
         const d = edge.depth != null ? edge.depth : t;
-        const c = Math.max(0, Math.min(edge.chamfer || 0, d, w / 2 - Math.abs(e) - 0.01));
-        pts.push(P(a + e, 0), P(a + e + c, -c), P(a + e + c, -d), P(b - e - c, -d), P(b - e - c, -c), P(b - e, 0));
+        const c = Math.max(0, Math.min(edge.chamfer || 0, d, e >= 0 ? e : d, w / 2 - Math.abs(e) - 0.01));
+        pts.push(P(a + e - c, 0), P(a + e, -c), P(a + e, -d), P(b - e, -d), P(b - e, -c), P(b - e + c, 0));
       }
     }
     return pts;
