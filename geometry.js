@@ -321,14 +321,24 @@
             else if (en.side === 'back') { cx = sp.w / 2 + su * xx; cy = sp.h - y - wid / 2; }
             else if (en.side === 'left') { cx = y + wid / 2; cy = sp.h / 2 + su * xx; ang = 90; }
             else { cx = sp.w - y - wid / 2; cy = sp.h / 2 + su * xx; ang = 90; }
+            let len2 = len, wid2 = wid;
             const th = (ang * Math.PI) / 180;
-            const hx = ((len - wid) / 2) * Math.abs(Math.cos(th)) + wid / 2;
-            const hy = ((len - wid) / 2) * Math.abs(Math.sin(th)) + wid / 2;
+            let hx = ((len2 - wid2) / 2) * Math.abs(Math.cos(th)) + wid2 / 2;
+            let hy = ((len2 - wid2) / 2) * Math.abs(Math.sin(th)) + wid2 / 2;
             if (cx - hx < t - EPS || cx + hx > sp.w - t + EPS || cy - hy < t - EPS || cy + hy > sp.h - t + EPS) {
               warnings.push(`${tag}: furo (horizontal ${xx.toFixed(0)}, vertical ${y.toFixed(0)}) invade a faixa de encaixe (${t} mm da borda) ou sai da peça.`);
             }
-            const L2 = Math.max(len - (cfg.kerfComp ? kerf : 0), 0.1);
-            const W2 = Math.max(wid - (cfg.kerfComp ? kerf : 0), 0.1);
+            // nunca deixa o furo sair da própria peça (evita um "anel" cobrindo o material todo);
+            // encolhe comprimento e largura mantendo a proporção e o centro informado
+            const maxHx = Math.max(0.1, Math.min(cx, sp.w - cx));
+            const maxHy = Math.max(0.1, Math.min(cy, sp.h - cy));
+            if (hx > maxHx || hy > maxHy) {
+              const k = Math.min(maxHx / hx, maxHy / hy, 1);
+              len2 = Math.max(0.2, len2 * k);
+              wid2 = Math.max(0.2, Math.min(wid2 * k, len2));
+            }
+            const L2 = Math.max(len2 - (cfg.kerfComp ? kerf : 0), 0.1);
+            const W2 = Math.max(wid2 - (cfg.kerfComp ? kerf : 0), 0.1);
             holes.push({ cx, cy, len: L2, wid: Math.min(W2, L2), ang });
           }
         }
