@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box Maker – caixas para corte a laser</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="gu" width="6" height="4" patternUnits="userSpaceOnUse"><rect width="6" height="4" fill="#f1e2c0"/><line x1="0" y1="2" x2="6" y2="2" stroke="#8a6a3a" stroke-width="1"/></pattern>
+    <pattern id="gv" width="4" height="6" patternUnits="userSpaceOnUse"><rect width="4" height="6" fill="#f1e2c0"/><line x1="2" y1="0" x2="2" y2="6" stroke="#8a6a3a" stroke-width="1"/></pattern>
+  </defs>
+</svg>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+      <path d="M16 3 4 9.5v13L16 29l12-6.5v-13z" fill="#e9c98d"/>
+      <path d="M16 3 4 9.5 16 16l12-6.5z" fill="#f6e3b8"/>
+      <path d="M16 16v13L4 22.5v-13z" fill="#d3a766"/>
+      <path d="M16 16 4 9.5M16 16l12-6.5M16 16v13" stroke="#8a6532" stroke-width="1.2" fill="none" stroke-linejoin="round"/>
+    </svg>
+    <div><h1>Box Maker</h1><span>caixas com encaixe para corte a laser</span></div>
+  </div>
+  <div id="help-pop" class="help-pop" hidden><div id="help-pop-body"></div></div>
+  <div class="actions">
+    <button id="dl-svg" class="btn primary" title="Um único arquivo com todas as chapas, empilhadas">Baixar SVG</button>
+    <button id="dl-dxf" class="btn primary" title="Um único arquivo com todas as chapas, empilhadas">Baixar DXF</button>
+    <span class="sep"></span>
+    <label class="csv-qty" title="Quantidade de caixas, para a lista de corte">
+      <span>Qtde.</span><input type="number" id="csv-qty" min="1" step="1" value="1">
+    </label>
+    <button id="dl-csv" class="btn ghost">Baixar CSV</button>
+    <button type="button" class="help-btn" data-help="csv">?</button>
+    <span class="sep"></span>
+    <button id="save-json" class="btn ghost">Salvar projeto</button>
+    <button id="load-json" class="btn ghost">Abrir projeto</button>
+    <button id="reset" class="btn ghost">Restaurar padrões</button>
+    <input type="file" id="file-json" accept=".json,application/json" hidden>
+  </div>
+</header>
+<main>
+<aside id="panel">
+
+  <details open>
+    <summary>1. Caixa e material <button type="button" class="help-btn inline" data-help="dims">?</button></summary>
+    <label class="wide">Medidas informadas são
+      <select data-k="dimMode"><option value="outer">externas</option><option value="inner">internas</option></select>
+    </label>
+    <div class="grid g3">
+      <label>Comprimento X (mm)<input type="number" step="any" data-k="W"></label>
+      <label>Largura Y (mm)<input type="number" step="any" data-k="D"></label>
+      <label>Altura Z (mm)<input type="number" step="any" data-k="H"></label>
+    </div>
+    <div class="grid g3">
+      <label>Espessura (mm)<input type="number" step="any" data-k="t"></label>
+      <label>Kerf (mm)<input type="number" step="any" data-k="kerf"></label>
+      <label>Interferência (mm)<input type="number" step="any" min="0" data-k="fit"
+        title="Quanto cada rasgo fica mais estreito que o dente, depois da compensação do kerf. 0 = encaixe nominal."></label>
+    </div>
+    <label class="check"><input type="checkbox" data-k="kerfComp"> Compensar kerf (contornos +kerf/2, furos −kerf/2)</label>
+  </details>
+
+  <details open>
+    <summary>2. Dentes de encaixe <button type="button" class="help-btn inline" data-help="teeth">?</button></summary>
+    <p class="hint">X = comprimento, Y = largura, Z = altura. A largura em mm é aplicada a cada dente e a cada intervalo. As duas pontas são cantos lisos e absorvem a sobra (podem ficar maiores ou menores que o dente). Divisões = 2 × dentes + 1, sempre ímpar. Editar as divisões recalcula a largura em mm.</p>
+    <table class="teeth">
+      <thead><tr><th></th><th>Largura (mm)</th><th>Divisões</th><th>Dentes · cantos</th></tr></thead>
+      <tbody>
+        <tr><th>Vertical (Z)</th>
+          <td><input type="number" step="any" min="1" data-k="toothVert"></td>
+          <td><input type="number" step="2" min="3" data-div="vert" data-key="toothVert"></td>
+          <td class="real" data-real="vert"></td></tr>
+        <tr><th>Fundo X</th>
+          <td><input type="number" step="any" min="1" data-k="toothBaseX"></td>
+          <td><input type="number" step="2" min="3" data-div="baseX" data-key="toothBaseX"></td>
+          <td class="real" data-real="baseX"></td></tr>
+        <tr><th>Fundo Y</th>
+          <td><input type="number" step="any" min="1" data-k="toothBaseY"></td>
+          <td><input type="number" step="2" min="3" data-div="baseY" data-key="toothBaseY"></td>
+          <td class="real" data-real="baseY"></td></tr>
+        <tr><th>Tampa X</th>
+          <td><input type="number" step="any" min="1" data-k="toothLidX"></td>
+          <td><input type="number" step="2" min="3" data-div="lidX" data-key="toothLidX"></td>
+          <td class="real" data-real="lidX"></td></tr>
+        <tr><th>Tampa Y</th>
+          <td><input type="number" step="any" min="1" data-k="toothLidY"></td>
+          <td><input type="number" step="2" min="3" data-div="lidY" data-key="toothLidY"></td>
+          <td class="real" data-real="lidY"></td></tr>
+      </tbody>
+    </table>
+    <p class="hint">Chanfro nos dois lados do encaixe, na ponta do dente e na boca do rasgo (facilita a entrada):</p>
+    <div class="grid g2">
+      <label>Em geral (mm)<input type="number" step="any" min="0" data-k="chamfer"></label>
+      <label>Na tampa (mm)<input type="number" step="any" min="0" data-k="chamferLid"></label>
+    </div>
+  </details>
+
+  <details open>
+    <summary>3. Fundo e tampa <button type="button" class="help-btn inline" data-help="lid">?</button></summary>
+    <label class="wide">Fundo
+      <select data-k="bottomMode">
+        <option value="wallTabs">Por fora: cobre as paredes (dentes das paredes atravessam o fundo)</option>
+        <option value="plateTabs">Por dentro: entre as paredes (dentes do fundo entram nas paredes)</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" data-k="lidEnabled"> Tem tampa</label>
+    <div id="lid-opts">
+      <label class="wide">Posição da tampa
+        <select data-k="lidPos">
+          <option value="outer">Por fora: cobre as paredes</option>
+          <option value="inner">Por dentro: entre as paredes</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" data-k="lidTeeth"> Com dentes de encaixe (desmarcado = tampa lisa, sem encaixe)</label>
+      <div class="grid g2">
+        <label>Recuo da tampa (mm)<input type="number" step="any" data-k="lidClearance"></label>
+        <label>Folga da tampa (mm)<input type="number" step="any" min="0" data-k="lidFit"></label>
+      </div>
+      <p class="hint" id="lid-size"></p>
+    </div>
+  </details>
+
+  <details open>
+    <summary>4. Furos oblongos <button type="button" class="help-btn inline" data-help="holes">?</button></summary>
+    <p class="hint">Furos de 120 × 35 mm por padrão. Os furos são sempre paralelos ao lado onde estão. Use Centralizar para calcular o deslocamento vertical que deixa o furo no meio.</p>
+    <div id="faces"></div>
+  </details>
+
+  <details>
+    <summary>5. Chapa e organização <button type="button" class="help-btn inline" data-help="sheet">?</button></summary>
+    <p class="hint">As peças são organizadas automaticamente em chapas. Se não couberem em uma, as que sobram vão para a próxima. "Baixar SVG" e "Baixar DXF" no topo juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência).</p>
+    <div class="grid g2">
+      <label>Largura da chapa (mm)<input type="number" step="any" min="50" data-k="sheetW"></label>
+      <label>Altura da chapa (mm)<input type="number" step="any" min="50" data-k="sheetH"></label>
+      <label>Espaço entre peças (mm)<input type="number" step="any" min="0" data-k="gap"></label>
+      <label>Margem da chapa (mm)<input type="number" step="any" min="0" data-k="margin"></label>
+    </div>
+    <div class="grain-title">Veio da chapa</div>
+    <p class="hint">Direção do veio em relação à chapa (largura × altura).</p>
+    <div id="grain-sheet" class="gsheet"></div>
+    <div class="grain-title">Veio de cada peça</div>
+    <p class="hint">Em relação à peça montada: u = horizontal, v = vertical (a altura, nas paredes). Só tem efeito se a chapa tiver veio.</p>
+    <div id="grain-pieces" class="gtable"></div>
+  </details>
+
+  <p class="foot"><button id="reset2" class="btn ghost small">Restaurar todos os padrões</button></p>
+</aside>
+
+<section id="view">
+  <div class="tabs" role="tablist">
+    <button class="tab" data-tab="3d" role="tab">Montagem 3D</button>
+    <button class="tab" data-tab="2d" role="tab">Peças para corte</button>
+  </div>
+  <div id="msg"></div>
+  <div id="pane2d" class="pane">
+    <div id="preview"></div>
+    <ul id="info"></ul>
+  </div>
+  <div id="pane3d" class="pane" hidden>
+    <div id="stage" class="card">
+      <div id="gl"></div>
+      <div class="stage-hint">Arraste para girar · Shift ou botão direito para mover · roda para zoom · duplo clique recentraliza</div>
+      <button id="cam-reset" class="btn small floating">Recentralizar</button>
+      <div id="gl-error" hidden></div>
+    </div>
+    <div id="pieces" class="card"></div>
+  </div>
+</section>
+</main>
+
+<footer class="sign">
+  <span><span class="brandname">Box Maker</span> por <span class="author">Mauricio Jabur – MauMaker</span><span class="dot">·</span>Built with <span class="brandname">Kiro</span></span>
+</footer>
+
+<script src="vendor/three.min.js"></script>
+<script src="geometry.js"></script>
+<script src="view3d.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
