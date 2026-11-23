@@ -127,7 +127,7 @@
         // chanfro nos cantos do material na boca do rasgo (ponta do dente "fêmea")
         // limitado também por e (quando positivo): o canto não pode passar de a/b
         const d = edge.depth != null ? edge.depth : t;
-        const c = Math.max(0, Math.min(edge.chamfer || 0, d, e >= 0 ? e : d, w / 2 - Math.abs(e) - 0.01));
+        const c = Math.max(0, Math.min(edge.chamfer || 0, d, (e >= 0 && !edge.freeChamfer) ? e : d, w / 2 - Math.abs(e) - 0.01));
         pts.push(P(a + e - c, 0), P(a + e, -c), P(a + e, -d), P(b - e, -d), P(b - e, -c), P(b - e + c, 0));
       }
     }
@@ -233,16 +233,16 @@
     info.push(fmt('Fundo X', divs.baseX) + '; ' + fmt('Y', divs.baseY));
     if (divs.lidX) info.push(fmt('Tampa X', divs.lidX) + '; ' + fmt('Y', divs.lidY));
     // aresta horizontal de uma parede (junção com fundo ou tampa)
-    const wallEdge = (state, len, tooth, chamfer, mc, fitHere) => {
+    const wallEdge = (state, len, tooth, chamfer, mc, fitHere, free) => {
       const full = { fullA: 0, fullB: len, minC: mc };
       if (state === 'wallTabs') return Object.assign({ mode: 'tab', a: t, b: len - t, tooth, chamfer, fit: 0 }, full);
-      if (state === 'plateTabs') return Object.assign({ mode: 'slot', a: t, b: len - t, tooth, chamfer, fit: fitHere }, full);
+      if (state === 'plateTabs') return Object.assign({ mode: 'slot', a: t, b: len - t, tooth, chamfer, fit: fitHere, freeChamfer: !!free }, full);
       return null;
     };
-    const plate = (state, tx, ty, chamfer, clearance, mc, fitHere) => {
+    const plate = (state, tx, ty, chamfer, clearance, mc, fitHere, free) => {
       const g = t + clearance; // guia
       if (state === 'wallTabs') {
-        const s = (a, b, tooth) => ({ mode: 'slot', a, b, tooth, chamfer, fit: fitHere, depth: g, fullA: 0, fullB: b + t, minC: mc });
+        const s = (a, b, tooth) => ({ mode: 'slot', a, b, tooth, chamfer, fit: fitHere, freeChamfer: !!free, depth: g, fullA: 0, fullB: b + t, minC: mc });
         return { rect: { x0: 0, y0: 0, x1: W, y1: D }, edges: { bottom: s(t, W - t, tx), top: s(t, W - t, tx), left: s(t, D - t, ty), right: s(t, D - t, ty) } };
       }
       if (state === 'plateTabs') {
@@ -260,24 +260,24 @@
       name, w: W, h: H,
       rect: { x0: 0, y0: zlo, x1: W, y1: zhi },
       edges: {
-        bottom: wallEdge(bot, W, tbx, cMain, minC, fit),
+        bottom: wallEdge(bot, W, tbx, cMain, minC, fit, true),
         top: hasLid ? wallEdge(lid, W, tlx, cLid, minCL, fitLid) : null,
-        left: { mode: 'slot', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, fullA: 0, fullB: H, minC },
-        right: { mode: 'slot', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, fullA: 0, fullB: H, minC },
+        left: { mode: 'slot', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, freeChamfer: true, fullA: 0, fullB: H, minC },
+        right: { mode: 'slot', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, freeChamfer: true, fullA: 0, fullB: H, minC },
       },
     });
     const xWall = (name) => ({
       name, w: D, h: H,
       rect: { x0: t, y0: zlo, x1: D - t, y1: zhi },
       edges: {
-        bottom: wallEdge(bot, D, tby, cMain, minC, fit),
+        bottom: wallEdge(bot, D, tby, cMain, minC, fit, true),
         top: hasLid ? wallEdge(lid, D, tly, cLid, minCL, fitLid) : null,
         left: { mode: 'tab', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit: 0, fullA: 0, fullB: H, minC },
         right: { mode: 'tab', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit: 0, fullA: 0, fullB: H, minC },
       },
     });
     specs.push(yWall('front'), yWall('back'), xWall('left'), xWall('right'));
-    const pb = plate(bot, tbx, tby, cMain, 0, minC, fit);
+    const pb = plate(bot, tbx, tby, cMain, 0, minC, fit, true);
     specs.push({ name: 'bottom', w: W, h: D, rect: pb.rect, edges: pb.edges });
     if (hasLid) {
       const pl = plate(lid, tlx, tly, cLid, cl, minCL, fitLid);
