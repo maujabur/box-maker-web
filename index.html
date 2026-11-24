@@ -59,7 +59,7 @@
       <label>Espessura (mm)<input type="number" step="any" data-k="t"></label>
       <label>Kerf (mm)<input type="number" step="any" data-k="kerf"></label>
       <label>Interferência (mm)<input type="number" step="any" min="0" data-k="fit"
-        title="Quanto cada rasgo fica mais estreito que o dente, depois da compensação do kerf. 0 = encaixe nominal."></label>
+        title="Diferença total de largura entre dente e rasgo, depois da compensação do kerf; metade fica no dente (mais largo) e metade no rasgo (mais estreito). 0 = encaixe nominal."></label>
     </div>
     <label class="check"><input type="checkbox" data-k="kerfComp"> Compensar kerf (contornos +kerf/2, furos −kerf/2)</label>
   </details>
@@ -118,8 +118,10 @@
       <label class="check"><input type="checkbox" data-k="lidTeeth"> Com dentes de encaixe (desmarcado = tampa lisa, sem encaixe)</label>
       <div class="grid g2">
         <label>Recuo da tampa (mm)<input type="number" step="any" data-k="lidClearance"></label>
-        <label>Folga da tampa (mm)<input type="number" step="any" min="0" data-k="lidFit"></label>
+        <label>Ajuste da tampa (mm)<input type="number" step="any" data-k="lidFit"
+          title="Diferença total de largura entre dente e rasgo da tampa, dividida entre os dois. Positivo = aperto. Zero = nominal. Negativo = folga."></label>
       </div>
+      <label class="check"><input type="checkbox" data-k="lidFitSame"> Ajuste da tampa igual à interferência geral (seção 1)</label>
       <p class="hint" id="lid-size"></p>
     </div>
   </details>

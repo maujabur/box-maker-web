@@ -42,7 +42,7 @@
     return {
       dimMode: 'outer', W: 500, D: 300, H: 200, t: 6, kerf: 0.1, kerfComp: true, fit: 0.1,
       toothVert: 20, toothBaseX: 20, toothBaseY: 20, toothLidX: 100, toothLidY: 100, chamfer: 0.5, chamferLid: 1,
-      bottomMode: 'wallTabs', lidEnabled: true, lidPos: 'outer', lidTeeth: true, lidClearance: 0, lidFit: 0.2,
+      bottomMode: 'wallTabs', lidEnabled: true, lidPos: 'outer', lidTeeth: true, lidClearance: 0, lidFitSame: false, lidFit: -0.1,
       sheetW: 1000, sheetH: 800, gap: 5, margin: 5, grain: 'none',
       faces: defaultFaces(),
       tab: '3d',
@@ -98,8 +98,9 @@
     if (src && src.pieceGrain) for (const [k] of PIECES) if (src.pieceGrain[k] === 'u' || src.pieceGrain[k] === 'v') pgr[k] = src.pieceGrain[k];
     c.pieceGrain = pgr;
     c.explode = Math.min(Math.max(+c.explode || 0, 0), 600);
-    c.lidFit = Math.max(0, +c.lidFit);
-    if (!(c.lidFit >= 0)) c.lidFit = 0.2;
+    c.lidFit = +c.lidFit;
+    if (!isFinite(c.lidFit)) c.lidFit = -0.1;
+    c.lidFitSame = !!c.lidFitSame;
     c.tab = '3d'; // sempre abre na montagem 3D
     return c;
   }
@@ -108,7 +109,7 @@
   const HELP = {
     dims: `<strong>Medidas</strong><p>Externas: o comprimento, a largura e a altura informados são as do lado de fora da caixa montada.</p><p>Internas: a página soma as espessuras necessárias (2× em X e Y, e em Z soma a espessura do fundo e, se houver, da tampa) e usa isso como medida externa.</p>`,
     teeth: `<strong>Dentes de encaixe</strong><p>Cada eixo (arestas verticais, fundo e tampa, em X e Y) tem uma largura alvo em mm e um número de divisões. Editar um recalcula o outro.</p><p>Divisões é sempre ímpar: as duas pontas são cantos lisos, que absorvem a sobra da divisão, e o miolo tem dentes e intervalos exatamente do tamanho digitado.</p><p>O chanfro arredonda a ponta dos dentes e a boca dos rasgos, nos dois lados do encaixe, para facilitar a montagem.</p>`,
-    lid: `<strong>Fundo e tampa</strong><p>Por fora cobre as paredes; por dentro fica entre elas. Com dentes, o encaixe usa os mesmos dentes da seção 2; sem dentes, a peça é lisa, só encostada.</p><p><em>Recuo da tampa</em>: desloca para dentro o retângulo-guia da tampa (a base dos dentes, ou o fundo dos rasgos quando a tampa é por fora): guia = medida − 2 × (espessura + recuo). O tamanho da tampa, na ponta dos dentes, não muda. Recuo positivo deixa a tampa mais justa contra as paredes; negativo deixa os dentes salientes.</p><p><em>Folga da tampa</em>: alarga só os rasgos que recebem os dentes da tampa (não afeta o fundo nem as outras arestas), para um encaixe mais solto. É o oposto da interferência: lá o rasgo fica mais estreito que o dente; aqui fica mais largo. Padrão 0,2 mm; ajuste conforme o seu MDF.</p>`,
+    lid: `<strong>Fundo e tampa</strong><p>Por fora cobre as paredes; por dentro fica entre elas. Com dentes, o encaixe usa os mesmos dentes da seção 2; sem dentes, a peça é lisa, só encostada.</p><p><em>Recuo da tampa</em>: desloca para dentro o retângulo-guia da tampa (a base dos dentes, ou o fundo dos rasgos quando a tampa é por fora): guia = medida − 2 × (espessura + recuo). O tamanho da tampa, na ponta dos dentes, não muda. Recuo positivo deixa a tampa mais justa contra as paredes; negativo deixa os dentes salientes.</p><p><em>Ajuste da tampa</em>: diferença total de largura entre os dentes e os rasgos da junção da tampa, independente da interferência da seção 1. Fica dividida meio a meio: positivo = aperto (o dente cresce metade e o rasgo encolhe metade); zero = encaixe nominal; negativo = folga (o dente encolhe metade e o rasgo cresce metade). Padrão −0,1 mm (folga). Marque "Ajuste da tampa igual à interferência geral" para a tampa seguir o valor da seção 1.</p>`,
     holes: `<strong>Furos oblongos</strong><p>Cada parede tem seu próprio conjunto de furos. Na tampa e no fundo, cada um dos quatro lados (frente, trás, esquerda, direita) tem o seu.</p><p>Horizontal: distância a partir do centro do lado, positivo para a direita (vista de fora, ou de pé diante do lado). Vertical: distância da borda até a borda mais próxima do furo. O furo é sempre paralelo ao lado.</p><p>"Centralizar" calcula o deslocamento vertical que deixa o furo no meio da parede (altura) ou do lado da tampa/fundo.</p>`,
     sheet: `<strong>Chapa e organização</strong><p>As peças de uma caixa são organizadas automaticamente em chapas do tamanho informado. O que não couber em uma vai para a próxima.</p><p>Veio: se a chapa tiver veio (horizontal ou vertical), cada peça marcada com veio só gira 90° se isso mantiver seu eixo de veio paralelo ao da chapa. Peças sem veio marcado giram livremente.</p><p>"Baixar SVG" e "Baixar DXF", no topo, juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência, não é corte).</p>`,
     csv: `<strong>Lista de corte (CSV)</strong><p>Gera um arquivo com o tamanho de cada peça (sem furos nem dentes, que esse formato não representa), no formato do <a href="https://www.opticutter.com/cut-list-optimizer/import/csv" target="_blank" rel="noopener">Cutlist Optimizer</a> (opticutter.com).</p><p>"Qtde." multiplica a lista pelo número de caixas que você vai fabricar, para organizar o corte de várias de uma vez. A chapa e o veio informados nas seções 1 e 5 já entram no arquivo.</p><p>O desenho detalhado de cada peça, com furos e dentes, continua saindo pelo SVG e pelo DXF.</p>`,
@@ -456,7 +457,7 @@
   }
 
   function render() {
-    document.querySelectorAll('#lid-opts input, #lid-opts select').forEach(el => { el.disabled = !cfg.lidEnabled; });
+    document.querySelectorAll('#lid-opts input, #lid-opts select').forEach(el => { el.disabled = !cfg.lidEnabled || (el.dataset.k === 'lidFit' && cfg.lidFitSame); });
     renderGrain();
     if (cfg.tab === '3d' && pieceLid !== cfg.lidEnabled) { pieceLid = cfg.lidEnabled; renderPieces(); }
     try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }

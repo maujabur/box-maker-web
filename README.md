@@ -23,8 +23,8 @@ Por Mauricio Jabur – MauMaker. Built with Kiro.
 
 ## Notas técnicas
 - **Kerf**: com "Compensar kerf" ligado, contornos externos crescem kerf/2 e furos diminuem kerf/2, para a peça saír na medida nominal depois do corte.
-- **Interferência** (seção 1): estreita os rasgos em geral, para um press-fit mais justo.
-- **Folga da tampa** (seção 3): o oposto, só nos rasgos que recebem os dentes da tampa — alarga para um encaixe mais solto ali.
+- **Interferência** (seção 1): diferença total de largura entre dente e rasgo em todas as junções (exceto a tampa, se ela tiver ajuste próprio), para um press-fit mais justo. Dividida meio a meio: o dente cresce metade e o rasgo encolhe metade (como o kerf, nas duas peças).
+- **Ajuste da tampa** (seção 3): valor próprio da junção da tampa, independente da interferência geral e também dividido entre dente e rasgo. Positivo = aperto, zero = nominal, negativo = folga (padrão −0,1 mm). Com "Ajuste da tampa igual à interferência geral" marcado, a tampa segue o valor da seção 1.
 - **Cantos**: o número de divisões por aresta é sempre ímpar; as duas pontas são cantos lisos, dimensionados para nunca ficarem menores que duas espessuras de material (evita geometria frágil ou impossível no canto).
 - O projeto fica salvo automaticamente no navegador (localStorage). Use "Salvar projeto" / "Abrir projeto" para guardar em arquivo.
 

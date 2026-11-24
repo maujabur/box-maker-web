@@ -105,7 +105,9 @@
    * Retorna pontos em ordem crescente do eixo, sem os cantos da base.
    * horizontal: o eixo é X e a base é y=base; senão o eixo é Y e a base é x=base.
    * ns: sinal da normal externa (+1 ou -1).
-   * fit: positivo estreita a boca do rasgo (aperto/interferência); negativo alarga (folga).
+   * fit: diferença TOTAL de largura da junção (dente - rasgo), dividida meio a meio entre as duas peças:
+   *   positivo (aperto) alarga o dente em fit/2 e estreita o rasgo em fit/2 (fit/4 por lado em cada um);
+   *   negativo (folga) faz o contrário. As duas peças da junção devem receber o mesmo fit.
    */
   function edgePoints(edge, t, base, horizontal, ns) {
     const pts = [];
@@ -119,15 +121,19 @@
       const a = fullA + lay.c + (i - 1) * w, b = a + w;
       if (edge.mode === 'tab') {
         const d = edge.depth != null ? edge.depth : t; // profundidade (pode ser menor que t = recuo)
-        const c = Math.max(0, Math.min(edge.chamfer || 0, d, w / 2 - 0.01));
-        pts.push(P(a, 0), P(a, d - c), P(a + c, d), P(b - c, d), P(b, d - c), P(b, 0));
+        // fit no dente: positivo alarga (aperto), negativo estreita (folga); metade do fit total, fit/4 por lado
+        const g = (edge.fit || 0) / 4;
+        const eg = Math.max(-(w / 2 - 0.05), Math.min(g, w / 2 - 0.05));
+        const ta = a - eg, tb = b + eg;
+        const c = Math.max(0, Math.min(edge.chamfer || 0, d, (tb - ta) / 2 - 0.01));
+        pts.push(P(ta, 0), P(ta, d - c), P(ta + c, d), P(tb - c, d), P(tb, d - c), P(tb, 0));
       } else {
-        const fitHalf = (edge.fit || 0) / 2;
-        const e = fitHalf >= 0 ? Math.min(fitHalf, w / 2 - 0.05) : Math.max(fitHalf, -(w / 2 - 0.05));
+        // fit no rasgo: positivo estreita (aperto), negativo alarga (folga); metade do fit total, fit/4 por lado
+        const fitQ = (edge.fit || 0) / 4;
+        const e = fitQ >= 0 ? Math.min(fitQ, w / 2 - 0.05) : Math.max(fitQ, -(w / 2 - 0.05));
         // chanfro nos cantos do material na boca do rasgo (ponta do dente "fêmea")
-        // limitado também por e (quando positivo): o canto não pode passar de a/b
         const d = edge.depth != null ? edge.depth : t;
-        const c = Math.max(0, Math.min(edge.chamfer || 0, d, (e >= 0 && !edge.freeChamfer) ? e : d, w / 2 - Math.abs(e) - 0.01));
+        const c = Math.max(0, Math.min(edge.chamfer || 0, d, w / 2 - Math.abs(e) - 0.01));
         pts.push(P(a + e - c, 0), P(a + e, -c), P(a + e, -d), P(b - e, -d), P(b - e, -c), P(b - e + c, 0));
       }
     }
@@ -180,9 +186,9 @@
     const t = +cfg.t;
     const kerf = +cfg.kerf || 0;
     const fit = Math.max(0, +cfg.fit || 0);
-    // folga da tampa (cfg.lidFit): o oposto da interferência geral. Alarga o rasgo que recebe o
-    // dente da tampa (não encolhe o dente), para um encaixe mais solto só na tampa.
-    const fitLid = fit - Math.max(0, +cfg.lidFit || 0);
+    // ajuste da tampa: valor próprio (positivo = aperto, negativo = folga) da junção da tampa,
+    // independente da interferência geral; com lidFitSame a tampa segue a interferência geral.
+    const fitLid = cfg.lidFitSame ? fit : (+cfg.lidFit || 0);
     const comp = cfg.kerfComp ? kerf / 2 : 0;
     let W = +cfg.W, D = +cfg.D, H = +cfg.H;
     const lid = lidState(cfg);
@@ -232,21 +238,34 @@
     info.push(fmt('Arestas verticais (Z)', divs.vert));
     info.push(fmt('Fundo X', divs.baseX) + '; ' + fmt('Y', divs.baseY));
     if (divs.lidX) info.push(fmt('Tampa X', divs.lidX) + '; ' + fmt('Y', divs.lidY));
+    // chanfro maior que o possível: o desenho usa o limite (profundidade do encaixe e metade do dente,
+    // descontada a folga/aperto), o valor digitado não muda; aqui só avisamos.
+    const chkChamfer = (nome, c, d, w, e) => {
+      const lim = Math.max(0, Math.min(d, w / 2 - Math.abs(e) - 0.01));
+      if (c > lim + 1e-9) warnings.push(`${nome}: chanfro de ${c} mm não cabe; desenhado com ${lim.toFixed(2)} mm (dente de ${w.toFixed(2)} mm, profundidade ${d.toFixed(2)} mm).`);
+    };
+    chkChamfer('Chanfro geral (arestas verticais)', cMain, t, divs.vert.w, fit / 4);
+    chkChamfer('Chanfro geral (fundo X)', cMain, t, divs.baseX.w, fit / 4);
+    chkChamfer('Chanfro geral (fundo Y)', cMain, t, divs.baseY.w, fit / 4);
+    if (divs.lidX) {
+      chkChamfer('Chanfro da tampa X', cLid, Math.min(t, lg), divs.lidX.w, fitLid / 4);
+      chkChamfer('Chanfro da tampa Y', cLid, Math.min(t, lg), divs.lidY.w, fitLid / 4);
+    }
     // aresta horizontal de uma parede (junção com fundo ou tampa)
-    const wallEdge = (state, len, tooth, chamfer, mc, fitHere, free) => {
+    const wallEdge = (state, len, tooth, chamfer, mc, fitHere) => {
       const full = { fullA: 0, fullB: len, minC: mc };
-      if (state === 'wallTabs') return Object.assign({ mode: 'tab', a: t, b: len - t, tooth, chamfer, fit: 0 }, full);
-      if (state === 'plateTabs') return Object.assign({ mode: 'slot', a: t, b: len - t, tooth, chamfer, fit: fitHere, freeChamfer: !!free }, full);
+      if (state === 'wallTabs') return Object.assign({ mode: 'tab', a: t, b: len - t, tooth, chamfer, fit: fitHere }, full);
+      if (state === 'plateTabs') return Object.assign({ mode: 'slot', a: t, b: len - t, tooth, chamfer, fit: fitHere }, full);
       return null;
     };
-    const plate = (state, tx, ty, chamfer, clearance, mc, fitHere, free) => {
+    const plate = (state, tx, ty, chamfer, clearance, mc, fitHere) => {
       const g = t + clearance; // guia
       if (state === 'wallTabs') {
-        const s = (a, b, tooth) => ({ mode: 'slot', a, b, tooth, chamfer, fit: fitHere, freeChamfer: !!free, depth: g, fullA: 0, fullB: b + t, minC: mc });
+        const s = (a, b, tooth) => ({ mode: 'slot', a, b, tooth, chamfer, fit: fitHere, depth: g, fullA: 0, fullB: b + t, minC: mc });
         return { rect: { x0: 0, y0: 0, x1: W, y1: D }, edges: { bottom: s(t, W - t, tx), top: s(t, W - t, tx), left: s(t, D - t, ty), right: s(t, D - t, ty) } };
       }
       if (state === 'plateTabs') {
-        const s = (a, b, tooth) => ({ mode: 'tab', a, b, tooth, chamfer, fit: 0, depth: g, fullA: 0, fullB: b + t, minC: mc });
+        const s = (a, b, tooth) => ({ mode: 'tab', a, b, tooth, chamfer, fit: fitHere, depth: g, fullA: 0, fullB: b + t, minC: mc });
         return { rect: { x0: g, y0: g, x1: W - g, y1: D - g }, edges: { bottom: s(t, W - t, tx), top: s(t, W - t, tx), left: s(t, D - t, ty), right: s(t, D - t, ty) } };
       }
       if (state === 'inset') {
@@ -260,24 +279,24 @@
       name, w: W, h: H,
       rect: { x0: 0, y0: zlo, x1: W, y1: zhi },
       edges: {
-        bottom: wallEdge(bot, W, tbx, cMain, minC, fit, true),
+        bottom: wallEdge(bot, W, tbx, cMain, minC, fit),
         top: hasLid ? wallEdge(lid, W, tlx, cLid, minCL, fitLid) : null,
-        left: { mode: 'slot', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, freeChamfer: true, fullA: 0, fullB: H, minC },
-        right: { mode: 'slot', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, freeChamfer: true, fullA: 0, fullB: H, minC },
+        left: { mode: 'slot', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, fullA: 0, fullB: H, minC },
+        right: { mode: 'slot', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, fullA: 0, fullB: H, minC },
       },
     });
     const xWall = (name) => ({
       name, w: D, h: H,
       rect: { x0: t, y0: zlo, x1: D - t, y1: zhi },
       edges: {
-        bottom: wallEdge(bot, D, tby, cMain, minC, fit, true),
+        bottom: wallEdge(bot, D, tby, cMain, minC, fit),
         top: hasLid ? wallEdge(lid, D, tly, cLid, minCL, fitLid) : null,
-        left: { mode: 'tab', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit: 0, fullA: 0, fullB: H, minC },
-        right: { mode: 'tab', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit: 0, fullA: 0, fullB: H, minC },
+        left: { mode: 'tab', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, fullA: 0, fullB: H, minC },
+        right: { mode: 'tab', a: zlo, b: zhi, tooth: tv, chamfer: cMain, fit, fullA: 0, fullB: H, minC },
       },
     });
     specs.push(yWall('front'), yWall('back'), xWall('left'), xWall('right'));
-    const pb = plate(bot, tbx, tby, cMain, 0, minC, fit, true);
+    const pb = plate(bot, tbx, tby, cMain, 0, minC, fit);
     specs.push({ name: 'bottom', w: W, h: D, rect: pb.rect, edges: pb.edges });
     if (hasLid) {
       const pl = plate(lid, tlx, tly, cLid, cl, minCL, fitLid);
@@ -306,6 +325,9 @@
         if (!face || !face.enabled) continue;
         const su = SIDE_SU[en.side];
         const tag = isWall ? FACE_NAME[sp.name] : `${FACE_NAME[sp.name]}, lado ${SIDE_NAME[en.side]}`;
+        // faixa de encaixe junto à borda da peça (a referência dos furos é a borda da caixa).
+        // Na tampa (exceto lisa por fora), a faixa é espessura + recuo.
+        const zone = (sp.name === 'lid' && lid !== 'overlay') ? lg : t;
         for (const h of face.holes || []) {
           const wid = +h.width || 0;
           const len = Math.max(+h.length || 0, wid);
@@ -321,24 +343,17 @@
             else if (en.side === 'back') { cx = sp.w / 2 + su * xx; cy = sp.h - y - wid / 2; }
             else if (en.side === 'left') { cx = y + wid / 2; cy = sp.h / 2 + su * xx; ang = 90; }
             else { cx = sp.w - y - wid / 2; cy = sp.h / 2 + su * xx; ang = 90; }
-            let len2 = len, wid2 = wid;
             const th = (ang * Math.PI) / 180;
-            let hx = ((len2 - wid2) / 2) * Math.abs(Math.cos(th)) + wid2 / 2;
-            let hy = ((len2 - wid2) / 2) * Math.abs(Math.sin(th)) + wid2 / 2;
-            if (cx - hx < t - EPS || cx + hx > sp.w - t + EPS || cy - hy < t - EPS || cy + hy > sp.h - t + EPS) {
-              warnings.push(`${tag}: furo (horizontal ${xx.toFixed(0)}, vertical ${y.toFixed(0)}) invade a faixa de encaixe (${t} mm da borda) ou sai da peça.`);
+            const hx = ((len - wid) / 2) * Math.abs(Math.cos(th)) + wid / 2;
+            const hy = ((len - wid) / 2) * Math.abs(Math.sin(th)) + wid / 2;
+            const pos = `horizontal ${xx.toFixed(0)}, vertical ${y.toFixed(0)}`;
+            if (cx - hx < -EPS || cx + hx > sp.w + EPS || cy - hy < -EPS || cy + hy > sp.h + EPS) {
+              warnings.push(`${tag}: furo (${pos}) é maior que a peça ou sai dela; o desenho não foi corrigido.`);
+            } else if (cx - hx < zone - EPS || cx + hx > sp.w - zone + EPS || cy - hy < zone - EPS || cy + hy > sp.h - zone + EPS) {
+              warnings.push(`${tag}: furo (${pos}) invade a faixa de encaixe (${zone} mm da borda).`);
             }
-            // nunca deixa o furo sair da própria peça (evita um "anel" cobrindo o material todo);
-            // encolhe comprimento e largura mantendo a proporção e o centro informado
-            const maxHx = Math.max(0.1, Math.min(cx, sp.w - cx));
-            const maxHy = Math.max(0.1, Math.min(cy, sp.h - cy));
-            if (hx > maxHx || hy > maxHy) {
-              const k = Math.min(maxHx / hx, maxHy / hy, 1);
-              len2 = Math.max(0.2, len2 * k);
-              wid2 = Math.max(0.2, Math.min(wid2 * k, len2));
-            }
-            const L2 = Math.max(len2 - (cfg.kerfComp ? kerf : 0), 0.1);
-            const W2 = Math.max(wid2 - (cfg.kerfComp ? kerf : 0), 0.1);
+            const L2 = Math.max(len - (cfg.kerfComp ? kerf : 0), 0.1);
+            const W2 = Math.max(wid - (cfg.kerfComp ? kerf : 0), 0.1);
             holes.push({ cx, cy, len: L2, wid: Math.min(W2, L2), ang });
           }
         }
