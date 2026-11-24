@@ -11,8 +11,8 @@ Por Mauricio Jabur – MauMaker. Built with Kiro.
 
 ## O que dá para configurar
 1. **Dimensões e material** — comprimento, largura, altura (externas ou internas), espessura, kerf e interferência geral.
-2. **Dentes de encaixe** — largura (ou número de divisões) por eixo, independente para arestas verticais, fundo (X/Y) e tampa (X/Y); chanfro nos dois lados do encaixe.
-3. **Fundo e tampa** — por fora (cobre as paredes) ou por dentro (entre as paredes), com ou sem dentes; recuo e folga específicos da tampa.
+2. **Fundo e tampa** — por fora (cobre as paredes) ou por dentro (entre as paredes), com ou sem dentes; recuo e ajuste (aperto ou folga) específicos da tampa.
+3. **Dentes de encaixe** — largura (ou número de divisões) por eixo, independente para arestas verticais, fundo (X/Y) e tampa (X/Y); chanfro nos dois lados do encaixe.
 4. **Furos oblongos** — por parede, e por lado (frente/trás/esquerda/direita) na tampa e no fundo; espelhamento e centralização automática.
 5. **Chapa e organização** — tamanho da chapa, espaço entre peças, margem e veio da madeira (da chapa e de cada peça).
 
@@ -24,7 +24,7 @@ Por Mauricio Jabur – MauMaker. Built with Kiro.
 ## Notas técnicas
 - **Kerf**: com "Compensar kerf" ligado, contornos externos crescem kerf/2 e furos diminuem kerf/2, para a peça saír na medida nominal depois do corte.
 - **Interferência** (seção 1): diferença total de largura entre dente e rasgo em todas as junções (exceto a tampa, se ela tiver ajuste próprio), para um press-fit mais justo. Dividida meio a meio: o dente cresce metade e o rasgo encolhe metade (como o kerf, nas duas peças).
-- **Ajuste da tampa** (seção 3): valor próprio da junção da tampa, independente da interferência geral e também dividido entre dente e rasgo. Positivo = aperto, zero = nominal, negativo = folga (padrão −0,1 mm). Com "Ajuste da tampa igual à interferência geral" marcado, a tampa segue o valor da seção 1.
+- **Ajuste da tampa** (seção 2): valor próprio da junção da tampa, independente da interferência geral e também dividido entre dente e rasgo. Positivo = aperto, zero = nominal, negativo = folga (padrão −0,1 mm). Com "Ajuste da tampa igual à interferência geral" marcado, a tampa segue o valor da seção 1.
 - **Cantos**: o número de divisões por aresta é sempre ímpar; as duas pontas são cantos lisos, dimensionados para nunca ficarem menores que duas espessuras de material (evita geometria frágil ou impossível no canto).
 - O projeto fica salvo automaticamente no navegador (localStorage). Use "Salvar projeto" / "Abrir projeto" para guardar em arquivo.
 
