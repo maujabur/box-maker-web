@@ -749,49 +749,71 @@
     return job.promise;
   }
 
-  function renderPlan(state) {
-    const bar = $('#plan-bar'), prev = $('#preview');
-    const st = state || {};
-    bar.classList.remove('stale', 'busy');
-    bar.innerHTML = '';
+  // A barra é montada uma vez e depois só tem textos atualizados: se o botão fosse recriado a cada
+  // recálculo, o clique que tira o foco de um campo (e dispara o recálculo) se perderia no meio.
+  let planUi = null, shownPlan = null, shownStale = null;
+  function planBar() {
+    if (planUi) return planUi;
+    const bar = $('#plan-bar');
     const msg = document.createElement('div'); msg.className = 'msg';
+    const strong = document.createElement('strong'), small = document.createElement('small');
+    msg.append(strong, small);
+    const pr = document.createElement('progress');
     const btn = document.createElement('button');
-    btn.className = 'btn small primary';
+    btn.type = 'button'; btn.className = 'btn small primary';
     btn.onclick = () => computePlan();
+    bar.append(msg, pr, btn);
+    planUi = { bar, msg, strong, small, pr, btn };
+    return planUi;
+  }
+  // desenha as chapas só quando o plano mostrado (ou seu estado) muda
+  function showSheets(lay, stale) {
+    const prev = $('#preview');
+    prev.className = stale ? 'stale' : '';
+    if (shownPlan === lay && shownStale === stale) return;
+    shownPlan = lay; shownStale = stale;
+    if (lay) renderSheets(prev, lay, stale); else prev.innerHTML = '';
+  }
+  function renderPlan(state) {
+    const st = state || {};
+    const ui = planBar();
+    ui.bar.classList.remove('stale', 'busy');
+    ui.pr.hidden = true;
+    ui.btn.hidden = true;
+    ui.msg.hidden = false;
     if (!last) {
+      ui.msg.hidden = true;
+      shownPlan = null; shownStale = null;
+      const prev = $('#preview');
       prev.className = '';
       prev.innerHTML = '<div class="empty">Não há peças para mostrar: corrija o erro indicado.</div>';
       return;
     }
     if (st.busy) {
-      bar.classList.add('busy');
+      ui.bar.classList.add('busy');
       const p = st.progress;
-      msg.innerHTML = '<strong>Calculando plano de corte…</strong><small></small>';
-      msg.querySelector('small').textContent = p ? `${p.placed} de ${p.pieces} peças posicionadas · passada ${p.pass} de ${p.passes}` : 'Preparando…';
-      const pr = document.createElement('progress');
-      if (p) { pr.max = p.pieces * p.passes; pr.value = (p.pass - 1) * p.pieces + p.placed; }
-      bar.append(msg, pr);
-      if (plan) prev.className = 'stale';
+      ui.strong.textContent = 'Calculando plano de corte…';
+      ui.small.textContent = p ? `${p.placed} de ${p.pieces} peças posicionadas · passada ${p.pass} de ${p.passes}` : 'Preparando…';
+      ui.pr.hidden = false;
+      if (p) { ui.pr.max = p.pieces * p.passes; ui.pr.value = (p.pass - 1) * p.pieces + p.placed; }
+      else ui.pr.removeAttribute('value');
+      if (plan) showSheets(plan.lay, true);
       return;
     }
     if (planCurrent()) {
       const lay = plan.lay;
       const q = lay.qty > 1 ? ` · ${lay.qty} caixas` : '';
-      msg.innerHTML = '<strong></strong><small></small>';
-      msg.querySelector('strong').textContent = `${chapas(lay.sheets.length)} de ${cfg.sheetW} × ${cfg.sheetH} mm${q}`;
-      msg.querySelector('small').textContent = plan.grainNote || 'Plano em dia com a configuração.';
-      bar.append(msg);
-      prev.className = '';
-      renderSheets(prev, lay);
+      ui.strong.textContent = `${chapas(lay.sheets.length)} de ${cfg.sheetW} × ${cfg.sheetH} mm${q}`;
+      ui.small.textContent = plan.grainNote || 'Plano em dia com a configuração.';
+      showSheets(lay, false);
       return;
     }
-    bar.classList.add('stale');
-    msg.innerHTML = plan ? '<strong>Plano desatualizado</strong><small>A configuração mudou depois do último cálculo.</small>'
-      : '<strong>Plano de corte ainda não calculado</strong><small>Ele também é calculado ao baixar o SVG ou o DXF.</small>';
-    btn.textContent = plan ? 'Recalcular plano' : 'Calcular plano de corte';
-    bar.append(msg, btn);
-    if (plan) { prev.className = 'stale'; renderSheets(prev, plan.lay, true); }
-    else { prev.className = ''; prev.innerHTML = ''; }
+    ui.bar.classList.add('stale');
+    ui.strong.textContent = plan ? 'Plano desatualizado' : 'Plano de corte ainda não calculado';
+    ui.small.textContent = plan ? 'A configuração mudou depois do último cálculo.' : 'Ele também é calculado ao baixar o SVG ou o DXF.';
+    ui.btn.textContent = plan ? 'Recalcular plano' : 'Calcular plano de corte';
+    ui.btn.hidden = false;
+    showSheets(plan ? plan.lay : null, true);
   }
 
   // ---------- chapas ----------

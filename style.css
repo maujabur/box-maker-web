@@ -181,7 +181,7 @@ label.na, td.na, tr.na th, tr.na td { opacity: .55; }
 #preview svg { display: block; }
 #preview.stale { opacity: .45; filter: grayscale(.6); pointer-events: none; }
 .plan-bar { flex: 1 1 320px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; color: var(--on-dark); font-size: 13px; line-height: 1.3; }
-.plan-bar[hidden] { display: none; }
+.plan-bar[hidden], .plan-bar [hidden] { display: none; }
 .plan-bar .msg { flex: 1 1 200px; }
 .plan-bar .msg small { display: block; color: var(--on-dark-muted); }
 .plan-bar.stale .msg strong { color: #f3c969; }
