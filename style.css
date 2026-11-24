@@ -86,8 +86,7 @@ header.top { flex: 0 0 auto; }
 main { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 430px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 #panel { overflow-y: auto; min-height: 0; padding: 14px; background: var(--panel); border-right: 1px solid var(--line-dark); }
 #view { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 14px 18px 14px; }
-#view > .tabs { flex: 0 0 auto; align-self: flex-start; }
-#view > #msg { flex: 0 0 auto; max-height: 22vh; overflow-y: auto; }
+#view > .viewbar { flex: 0 0 auto; }
 #view > .pane { flex: 1 1 0; min-height: 0; position: relative; }
 #pane2d { overflow-y: auto; }
 #panel, #view { scrollbar-color: #34517d transparent; }
@@ -164,9 +163,10 @@ table.teeth input { min-width: 54px; }
 #panel .btn.ghost { color: var(--on-dark); }
 
 /* ---------- abas e painéis ---------- */
-.tabs { display: inline-flex; padding: 4px; gap: 4px; background: #0a1527; border: 1px solid var(--line-dark); border-radius: 11px; margin-bottom: 12px; }
+.tabs { display: inline-flex; padding: 4px; gap: 4px; background: #0a1527; border: 1px solid var(--line-dark); border-radius: 11px; }
 .tab {
   border: 0; background: transparent; color: var(--on-dark-muted); font-weight: 600; padding: 7px 16px; border-radius: 8px; cursor: pointer;
+  white-space: nowrap;
 }
 .tab:hover { color: #fff; }
 .tab.active { background: var(--accent); color: #fff; box-shadow: 0 1px 6px rgba(47, 111, 220, .5); }
@@ -186,9 +186,52 @@ table.teeth input { min-width: 54px; }
 .brand .dot { margin: 0 4px; opacity: .5; font-style: normal; }
 .brand b { font-weight: 700; color: var(--on-dark); }
 #info { font-size: 12px; color: var(--on-dark-muted); padding-left: 18px; margin: 12px 2px 0; }
-#msg .err, #msg .warn { padding: 8px 12px; border-radius: 9px; margin-bottom: 8px; font-size: 13px; color: var(--ink); }
-#msg .err { background: var(--err-bg); border: 1px solid var(--err-line); }
-#msg .warn { background: var(--warn-bg); border: 1px solid var(--warn-line); }
+
+/* ---------- avisos e erros ---------- */
+.viewbar { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 12px; }
+.status { border: 1px solid; border-radius: 999px; padding: 6px 14px; font-weight: 650; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.status[hidden], .status-list[hidden], #gl-invalid[hidden], #toast[hidden] { display: none; }
+.status.lvl-error { background: var(--err-bg); border-color: var(--err-line); color: #8a2f25; }
+.status.lvl-warn { background: var(--warn-bg); border-color: var(--warn-line); color: #7a5a10; }
+.status.lvl-info { background: var(--accent-soft); border-color: #9db9e8; color: #1f4a9a; }
+.status-list {
+  position: absolute; right: 0; top: calc(100% - 6px); z-index: 20; width: min(560px, 100%); max-height: 60vh; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+}
+.issue {
+  display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; padding: 9px 12px; background: transparent;
+  border: 0; border-top: 1px solid var(--line); cursor: pointer; font-size: 13px; line-height: 1.4; color: var(--ink);
+}
+.issue:first-child { border-top: 0; }
+.issue:hover { background: var(--card-2); }
+.issue .ico { flex: 0 0 auto; font-weight: 700; }
+.issue.lvl-error .ico { color: #c0392b; }
+.issue.lvl-warn .ico { color: #c98a0a; }
+.issue.lvl-info .ico { color: var(--accent); }
+#gl-invalid {
+  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  text-align: center; padding: 24px; background: rgba(236, 230, 218, .86); color: #8a2f25;
+}
+#gl-invalid strong { font-size: 16px; }
+#gl-invalid span { max-width: 520px; color: var(--ink); }
+.empty { color: var(--on-dark-muted); padding: 24px 4px; }
+#toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 60; max-width: min(560px, calc(100vw - 32px));
+  background: #0a1527; color: #fff; border: 1px solid var(--line-dark); border-radius: 10px; padding: 10px 16px; font-size: 13px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+}
+/* campos com problema: o primeiro campo citado fica forte, os demais só levemente marcados */
+.f-err, input.f-err, select.f-err { border-color: #d0463b !important; background: #fff2f0 !important; box-shadow: 0 0 0 3px rgba(208, 70, 59, .18); }
+.f-warn, input.f-warn, select.f-warn { border-color: #d9a21b !important; background: #fffaf0 !important; box-shadow: 0 0 0 3px rgba(217, 162, 27, .2); }
+.f-info, input.f-info, select.f-info { border-color: #5b8fe0 !important; box-shadow: 0 0 0 3px rgba(91, 143, 224, .2); }
+.f-rel { outline: 1px dashed #cdb67a; outline-offset: 1px; }
+.hole.f-warn { background: #fff4dc !important; }
+details.m-err > summary::after, details.m-warn > summary::after, details.m-info > summary::after { content: ""; width: 9px; height: 9px; border-radius: 50%; margin-left: 4px; }
+details.m-err > summary::after { background: #d0463b; }
+details.m-warn > summary::after { background: #e0a020; }
+details.m-info > summary::after { background: #5b8fe0; }
+.pulse { animation: pulse 1.2s ease-out 1; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(47, 111, 220, .7); } 100% { box-shadow: 0 0 0 12px rgba(47, 111, 220, 0); } }
 
 /* ---------- 3D ---------- */
 #stage {
@@ -249,7 +292,6 @@ table.teeth input { min-width: 54px; }
   main { display: block; flex: 1 0 auto; }
   #panel { border-right: 0; border-bottom: 1px solid var(--line-dark); overflow: visible; }
   #view { display: block; }
-  #view > #msg { max-height: none; }
   #pane3d { height: 75vh; }
   #pane2d { overflow: visible; }
 }
@@ -275,6 +317,10 @@ table.teeth input { min-width: 54px; }
 
 /* ---------- tabela de dentes em telas muito estreitas ---------- */
 @media (max-width: 520px) {
+  .tab { padding: 7px 12px; }
+  /* painel de peças: nome e Explodir na primeira linha, Sólida/Transparente embaixo */
+  .piece { grid-template-columns: 30px 1fr auto; row-gap: 4px; }
+  .piece .seg { grid-column: 2 / -1; grid-row: 2; justify-self: start; }
   table.teeth, table.teeth tbody { display: block; }
   table.teeth thead { display: none; }
   table.teeth tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--line); }

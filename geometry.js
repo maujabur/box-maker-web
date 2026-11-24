@@ -164,6 +164,10 @@
     return { A: T(-h, -r), B: T(h, -r), C: T(h, r), D: T(-h, r), r, h };
   }
 
+  // ---------- avisos e erros ----------
+  // Erro de configuração: `keys` lista os campos (data-k) que o causam, para a interface destacá-los.
+  function fail(msg, keys) { const e = new Error(msg); e.keys = keys || []; return e; }
+
   // ---------- montagem das peças ----------
 
   // Estado da tampa a partir das opções (ou do antigo lidMode).
@@ -200,56 +204,62 @@
     const lg = t + cl;
     const hasLid = lid !== 'none';
     if (cfg.dimMode === 'inner') { W += 2 * t; D += 2 * t; H += t + (hasLid ? t : 0); }
-    if (!(t > 0)) throw new Error('Espessura inválida.');
-    if (W < 4 * t || D < 4 * t || H < 4 * t) throw new Error('Dimensões muito pequenas para a espessura.');
+    if (!(t > 0)) throw fail('Espessura inválida.', ['t']);
+    if (W < 4 * t || D < 4 * t || H < 4 * t) {
+      throw fail('Dimensões muito pequenas para a espessura.', ['t'].concat(W < 4 * t ? ['W'] : [], D < 4 * t ? ['D'] : [], H < 4 * t ? ['H'] : []));
+    }
 
     // largura alvo dos dentes por eixo (X = comprimento, Y = largura, Z = altura)
     const pick = (a, b) => (+a > 0 ? +a : +b);
     const tv = pick(cfg.toothVert, 20);
     const tbx = pick(cfg.toothBaseX, cfg.toothBase), tby = pick(cfg.toothBaseY, cfg.toothBase);
     const tlx = pick(cfg.toothLidX, cfg.toothLid), tly = pick(cfg.toothLidY, cfg.toothLid);
+    // avisos: { level: 'info' | 'warn', text, keys: [campos], face?, hole? }
+    //   info = o desenho foi adaptado automaticamente; warn = há um problema real no resultado.
     const warnings = [];
+    const warn = (level, text, ref) => warnings.push(Object.assign({ level, text }, ref));
     const info = [];
     const zlo = bot === 'plateTabs' ? 0 : t;
     const zhi = (lid === 'wallTabs' || lid === 'overlay') ? H - t : H;
-    if (hasLid && cl < 0) throw new Error('Recuo da tampa não pode ser negativo.');
+    if (hasLid && cl < 0) throw fail('Recuo da tampa não pode ser negativo.', ['lidClearance']);
     if (lid !== 'none' && lid !== 'overlay') {
-      if (W - 2 * lg <= 0 || D - 2 * lg <= 0) throw new Error('Recuo da tampa grande demais: o retângulo-guia da tampa não tem tamanho.');
+      if (W - 2 * lg <= 0 || D - 2 * lg <= 0) throw fail('Recuo da tampa grande demais: o retângulo-guia da tampa não tem tamanho.', ['lidClearance', 'W', 'D', 't']);
     }
-    if (zhi - zlo < 2 * t) throw new Error('Altura insuficiente para os dentes verticais.');
+    if (zhi - zlo < 2 * t) throw fail('Altura insuficiente para os dentes verticais.', ['H', 't', 'bottomMode', 'lidPos']);
 
     const cMain = +cfg.chamfer || 0, cLid = +cfg.chamferLid || 0;
 
     // divisões (número ímpar, pontas lisas) e largura real, por eixo
     const minC = 2 * t;                       // canto mínimo geral: zona da peça vizinha + ponte
     const minCL = 2 * t + Math.max(cl, 0);    // arestas da tampa: o recuo aprofunda a zona
-    const mkDiv = (L, tooth, mc, nome) => {
+    const mkDiv = (L, tooth, mc, nome, keys) => {
       const d = toothLayout(L, tooth, mc);
-      if (d.adj) warnings.push(`${nome}: dente de ${tooth} mm não cabe em ${L.toFixed(1)} mm com canto mínimo de ${mc.toFixed(1)} mm; usando ${d.m.toFixed(2)} mm.`);
+      if (d.adj) warn('warn', `${nome}: dente de ${tooth} mm não cabe em ${L.toFixed(1)} mm com canto mínimo de ${mc.toFixed(1)} mm; usando ${d.m.toFixed(2)} mm.`, { keys });
+      else if (d.n < oddCount(L, tooth)) warn('info', `${nome}: o canto mínimo de ${mc.toFixed(1)} mm reduziu as divisões de ${oddCount(L, tooth)} para ${d.n} (dente de ${tooth} mm em ${L.toFixed(1)} mm).`, { keys });
       return { n: d.n, L, w: d.m, c: d.c };
     };
     const divs = {
-      vert: mkDiv(H, tv, minC, 'Arestas verticais'),
-      baseX: mkDiv(W, tbx, minC, 'Fundo X'), baseY: mkDiv(D, tby, minC, 'Fundo Y'),
+      vert: mkDiv(H, tv, minC, 'Arestas verticais', ['toothVert', 'H', 't']),
+      baseX: mkDiv(W, tbx, minC, 'Fundo X', ['toothBaseX', 'W', 't']), baseY: mkDiv(D, tby, minC, 'Fundo Y', ['toothBaseY', 'D', 't']),
       lidX: null, lidY: null,
     };
-    if (lid === 'wallTabs' || lid === 'plateTabs') { divs.lidX = mkDiv(W, tlx, minCL, 'Tampa X'); divs.lidY = mkDiv(D, tly, minCL, 'Tampa Y'); }
+    if (lid === 'wallTabs' || lid === 'plateTabs') { divs.lidX = mkDiv(W, tlx, minCL, 'Tampa X', ['toothLidX', 'W', 't', 'lidClearance']); divs.lidY = mkDiv(D, tly, minCL, 'Tampa Y', ['toothLidY', 'D', 't', 'lidClearance']); }
     const fmt = (nm, d) => `${nm}: ${d.n} divisões, ${(d.n - 1) / 2} dentes de ${d.w.toFixed(2)} mm, cantos de ${d.c.toFixed(2)} mm`;
     info.push(fmt('Arestas verticais (Z)', divs.vert));
     info.push(fmt('Fundo X', divs.baseX) + '; ' + fmt('Y', divs.baseY));
     if (divs.lidX) info.push(fmt('Tampa X', divs.lidX) + '; ' + fmt('Y', divs.lidY));
     // chanfro maior que o possível: o desenho usa o limite (profundidade do encaixe e metade do dente,
     // descontada a folga/aperto), o valor digitado não muda; aqui só avisamos.
-    const chkChamfer = (nome, c, d, w, e) => {
+    const chkChamfer = (nome, c, d, w, e, keys) => {
       const lim = Math.max(0, Math.min(d, w / 2 - Math.abs(e) - 0.01));
-      if (c > lim + 1e-9) warnings.push(`${nome}: chanfro de ${c} mm não cabe; desenhado com ${lim.toFixed(2)} mm (dente de ${w.toFixed(2)} mm, profundidade ${d.toFixed(2)} mm).`);
+      if (c > lim + 1e-9) warn('info', `${nome}: chanfro de ${c} mm não cabe; desenhado com ${lim.toFixed(2)} mm (dente de ${w.toFixed(2)} mm, profundidade ${d.toFixed(2)} mm).`, { keys });
     };
-    chkChamfer('Chanfro geral (arestas verticais)', cMain, t, divs.vert.w, fit / 4);
-    chkChamfer('Chanfro geral (fundo X)', cMain, t, divs.baseX.w, fit / 4);
-    chkChamfer('Chanfro geral (fundo Y)', cMain, t, divs.baseY.w, fit / 4);
+    chkChamfer('Chanfro geral (arestas verticais)', cMain, t, divs.vert.w, fit / 4, ['chamfer', 'toothVert', 'fit']);
+    chkChamfer('Chanfro geral (fundo X)', cMain, t, divs.baseX.w, fit / 4, ['chamfer', 'toothBaseX', 'fit']);
+    chkChamfer('Chanfro geral (fundo Y)', cMain, t, divs.baseY.w, fit / 4, ['chamfer', 'toothBaseY', 'fit']);
     if (divs.lidX) {
-      chkChamfer('Chanfro da tampa X', cLid, Math.min(t, lg), divs.lidX.w, fitLid / 4);
-      chkChamfer('Chanfro da tampa Y', cLid, Math.min(t, lg), divs.lidY.w, fitLid / 4);
+      chkChamfer('Chanfro da tampa X', cLid, Math.min(t, lg), divs.lidX.w, fitLid / 4, ['chamferLid', 'toothLidX', 'lidFit']);
+      chkChamfer('Chanfro da tampa Y', cLid, Math.min(t, lg), divs.lidY.w, fitLid / 4, ['chamferLid', 'toothLidY', 'lidFit']);
     }
     // aresta horizontal de uma parede (junção com fundo ou tampa)
     const wallEdge = (state, len, tooth, chamfer, mc, fitHere) => {
@@ -328,7 +338,9 @@
         // faixa de encaixe junto à borda da peça (a referência dos furos é a borda da caixa).
         // Na tampa (exceto lisa por fora), a faixa é espessura + recuo.
         const zone = (sp.name === 'lid' && lid !== 'overlay') ? lg : t;
+        let hi = -1;
         for (const h of face.holes || []) {
+          hi++;
           const wid = +h.width || 0;
           const len = Math.max(+h.length || 0, wid);
           if (!(wid > 0)) continue;
@@ -348,9 +360,9 @@
             const hy = ((len - wid) / 2) * Math.abs(Math.sin(th)) + wid / 2;
             const pos = `horizontal ${xx.toFixed(0)}, vertical ${y.toFixed(0)}`;
             if (cx - hx < -EPS || cx + hx > sp.w + EPS || cy - hy < -EPS || cy + hy > sp.h + EPS) {
-              warnings.push(`${tag}: furo (${pos}) é maior que a peça ou sai dela; o desenho não foi corrigido.`);
+              warn('warn', `${tag}: furo (${pos}) é maior que a peça ou sai dela; o desenho não foi corrigido.`, { face: en.key, hole: hi });
             } else if (cx - hx < zone - EPS || cx + hx > sp.w - zone + EPS || cy - hy < zone - EPS || cy + hy > sp.h - zone + EPS) {
-              warnings.push(`${tag}: furo (${pos}) invade a faixa de encaixe (${zone} mm da borda).`);
+              warn('warn', `${tag}: furo (${pos}) invade a faixa de encaixe (${zone} mm da borda).`, { face: en.key, hole: hi });
             }
             const L2 = Math.max(len - (cfg.kerfComp ? kerf : 0), 0.1);
             const W2 = Math.max(wid - (cfg.kerfComp ? kerf : 0), 0.1);
@@ -480,7 +492,7 @@
       if (!placed.length) {
         // peça maior que a chapa: vai sozinha, em uma chapa ampliada, com aviso
         const pc = remaining.shift();
-        res.warnings.push(`${pc.p.label} (${pc.w.toFixed(0)} × ${pc.h.toFixed(0)} mm) não cabe na chapa de ${SW} × ${SH} mm (com margem de ${margin} mm).`);
+        res.warnings.push({ level: 'warn', text: `${pc.p.label} (${pc.w.toFixed(0)} × ${pc.h.toFixed(0)} mm) não cabe na chapa de ${SW} × ${SH} mm (com margem de ${margin} mm).`, keys: ['sheetW', 'sheetH', 'margin'] });
         sheets.push({ items: [mkItem(pc, pc.fixed === 1 ? 1 : 0, margin, margin)], width: Math.max(SW, pc.w + 2 * margin), height: Math.max(SH, pc.h + 2 * margin), oversize: true, grain });
         continue;
       }

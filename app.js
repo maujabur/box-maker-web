@@ -149,12 +149,15 @@
     document.querySelectorAll('[data-k]').forEach(el => {
       const k = el.dataset.k;
       if (el.type === 'checkbox') el.checked = !!cfg[k]; else el.value = cfg[k];
-      el.oninput = el.onchange = () => {
+      const apply = () => {
         if (el.type === 'checkbox') cfg[k] = el.checked;
-        else if (el.type === 'number') { const v = parseFloat(el.value); if (isNaN(v)) return; cfg[k] = v; }
+        else if (el.type === 'number') { const v = parseFloat(el.value); if (isNaN(v)) return false; cfg[k] = v; }
         else cfg[k] = el.value;
-        update();
+        return true;
       };
+      // digitando: espera uma pausa antes de recalcular (evita erros passageiros); ao confirmar, recalcula já
+      el.oninput = () => { if (apply()) update(el.type === 'number' ? TYPING_DELAY : 0); };
+      el.onchange = () => { if (apply()) update(); };
     });
   }
 
@@ -199,7 +202,8 @@
     l.append(label);
     const i = document.createElement('input');
     i.type = 'number'; i.step = 'any'; i.value = obj[key];
-    i.oninput = () => { const v = parseFloat(i.value); if (isNaN(v)) return; obj[key] = v; update(); };
+    i.oninput = () => { const v = parseFloat(i.value); if (isNaN(v)) return; obj[key] = v; update(TYPING_DELAY); };
+    i.onchange = () => update();
     l.append(i);
     if (onChange) onChange(i);
     return l;
@@ -231,6 +235,7 @@
         const face = cfg.faces[key];
         const wrap = document.createElement('div');
         wrap.className = 'face';
+        wrap.dataset.face = key;
         const head = document.createElement('div');
         head.className = 'head';
         const lab = document.createElement('label');
@@ -247,6 +252,8 @@
         face.holes.forEach((h, idx) => {
           const hb = document.createElement('div');
           hb.className = 'hole';
+          hb.dataset.face = key;
+          hb.dataset.hole = idx;
           const g = document.createElement('div');
           g.className = 'grid';
           let yInput = null;
@@ -459,11 +466,22 @@
   };
 
   // ---------- atualização ----------
-  let pending = false;
-  function update() {
+  let pending = false, typingTimer = 0;
+  const TYPING_DELAY = 250; // ms de pausa na digitação antes de recalcular
+  function update(delay) {
+    if (delay > 0) {
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => { typingTimer = 0; update(); }, delay);
+      return;
+    }
+    clearTimeout(typingTimer); typingTimer = 0;
     if (pending) return;
     pending = true;
     requestAnimationFrame(() => { pending = false; render(); });
+  }
+  // se há uma digitação ainda esperando para recalcular, recalcula agora (usado antes de baixar arquivos)
+  function flushUpdate() {
+    if (typingTimer) { clearTimeout(typingTimer); typingTimer = 0; render(); }
   }
 
   function render() {
@@ -471,8 +489,9 @@
     renderGrain();
     if (cfg.tab === '3d' && pieceLid !== cfg.lidEnabled) { pieceLid = cfg.lidEnabled; renderPieces(); }
     try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }
-    const msg = $('#msg'), prev = $('#preview'), info = $('#info');
-    msg.innerHTML = ''; info.innerHTML = '';
+    const prev = $('#preview'), info = $('#info');
+    info.innerHTML = '';
+    let issues = [], failure = null;
     try {
       const res = G.build(cfg);
       const lay = G.layout(res, cfg);
@@ -480,7 +499,7 @@
       dirty3d = true;
       if (cfg.tab === '3d') refresh3d();
       renderSheets(prev, lay);
-      res.warnings.forEach(w => { const d = document.createElement('div'); d.className = 'warn'; d.textContent = w; msg.append(d); });
+      issues = res.warnings.slice();
       const d = res.dims;
       const li0 = document.createElement('li');
       li0.textContent = `Caixa externa: ${d.W} × ${d.D} × ${d.H} mm. ${lay.sheets.length} ${lay.sheets.length === 1 ? 'chapa' : 'chapas'} de ${cfg.sheetW} × ${cfg.sheetH} mm.`;
@@ -498,10 +517,133 @@
       res.info.forEach(t => { const li = document.createElement('li'); li.textContent = t; info.append(li); });
     } catch (e) {
       last = null;
+      failure = e;
+      issues = [{ level: 'error', text: e.message, keys: e.keys || [] }];
       showDivs(null);
-      prev.innerHTML = '';
-      const d = document.createElement('div'); d.className = 'err'; d.textContent = e.message; msg.append(d);
+      prev.innerHTML = '<div class="empty">Não há peças para mostrar: corrija o erro indicado.</div>';
     }
+    lastIssues = issues; lastFailure = failure;
+    showIssues(issues, failure);
+  }
+
+  // ---------- avisos e erros ----------
+  let lastIssues = [], lastFailure = null;
+  const LVL = { error: { rank: 3, ico: '✖', cls: 'f-err', m: 'm-err' }, warn: { rank: 2, ico: '⚠', cls: 'f-warn', m: 'm-warn' }, info: { rank: 1, ico: 'ℹ', cls: 'f-info', m: 'm-info' } };
+  const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+  function fieldEls(k) { return [...document.querySelectorAll(`[data-k="${k}"], [data-key="${k}"]`)]; }
+  function issueTargets(it) {
+    if (it.face != null) return [...document.querySelectorAll(`.hole[data-face="${it.face}"][data-hole="${it.hole}"]`)];
+    return fieldEls((it.keys || [])[0]);
+  }
+  function clearMarks() {
+    document.querySelectorAll('.f-err, .f-warn, .f-info, .f-rel, .m-err, .m-warn, .m-info').forEach(el => {
+      el.classList.remove('f-err', 'f-warn', 'f-info', 'f-rel', 'm-err', 'm-warn', 'm-info');
+      delete el.dataset.sev;
+    });
+  }
+  // marca o campo principal de cada aviso (todos os campos, no caso de erros) e as seções que o contêm
+  function markIssues(issues) {
+    clearMarks();
+    const mark = (el, lv) => {
+      const cur = +el.dataset.sev || 0;
+      if (lv.rank > cur) {
+        el.classList.remove('f-err', 'f-warn', 'f-info', 'f-rel');
+        el.classList.add(lv.cls);
+        el.dataset.sev = lv.rank;
+      }
+      for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) {
+        const dr = +d.dataset.sev || 0;
+        if (lv.rank > dr) { d.classList.remove('m-err', 'm-warn', 'm-info'); d.classList.add(lv.m); d.dataset.sev = lv.rank; }
+      }
+    };
+    for (const it of issues) {
+      const lv = LVL[it.level];
+      if (!lv) continue;
+      if (it.face != null) { issueTargets(it).forEach(el => mark(el, lv)); continue; }
+      const keys = it.keys || [];
+      keys.forEach((k, i) => fieldEls(k).forEach(el => {
+        if (it.level === 'error' || i === 0) mark(el, lv);
+        else if (!el.dataset.sev) el.classList.add('f-rel');
+      }));
+    }
+  }
+  // leva o usuário ao campo do aviso: abre as seções, rola, foca e pisca
+  function focusIssue(it) {
+    const el = issueTargets(it)[0] || (it.keys || []).map(fieldEls).map(a => a[0]).find(Boolean);
+    if (!el) return;
+    for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const input = el.matches('input, select') ? el : el.querySelector('input, select');
+    if (input) input.focus({ preventScroll: true });
+    el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+    setTimeout(() => el.classList.remove('pulse'), 1300);
+  }
+  function setStatusOpen(open) {
+    const list = $('#status-list'), btn = $('#status');
+    list.hidden = !open;
+    btn.setAttribute('aria-expanded', open);
+  }
+  function showIssues(issues, failure) {
+    markIssues(issues);
+    // 3D e peças: sinaliza quando não há modelo válido
+    const inv = $('#gl-invalid');
+    inv.hidden = !failure;
+    inv.innerHTML = '';
+    if (failure) {
+      const b = document.createElement('strong'); b.textContent = 'Modelo inválido';
+      const m = document.createElement('span'); m.textContent = failure.message + ' Corrija o campo destacado.';
+      inv.append(b, m);
+    }
+    const btn = $('#status'), list = $('#status-list');
+    const n = { error: 0, warn: 0, info: 0 };
+    issues.forEach(it => { if (n[it.level] != null) n[it.level]++; });
+    const total = n.error + n.warn + n.info;
+    btn.hidden = total === 0;
+    if (!total) { setStatusOpen(false); list.innerHTML = ''; return; }
+    const top = n.error ? 'error' : n.warn ? 'warn' : 'info';
+    btn.className = 'status lvl-' + top;
+    const parts = [];
+    if (n.error) parts.push(plural(n.error, 'erro', 'erros'));
+    if (n.warn) parts.push(plural(n.warn, 'aviso', 'avisos'));
+    if (n.info) parts.push(plural(n.info, 'informação', 'informações'));
+    btn.textContent = LVL[top].ico + ' ' + parts.join(' · ');
+    list.innerHTML = '';
+    [...issues].sort((a, b) => LVL[b.level].rank - LVL[a.level].rank).forEach(it => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'issue lvl-' + it.level;
+      const ico = document.createElement('span'); ico.className = 'ico'; ico.textContent = LVL[it.level].ico;
+      const tx = document.createElement('span'); tx.textContent = it.text;
+      b.append(ico, tx);
+      b.onclick = () => { setStatusOpen(false); focusIssue(it); };
+      list.append(b);
+    });
+  }
+  $('#status').onclick = () => setStatusOpen($('#status-list').hidden);
+  document.addEventListener('click', ev => {
+    if (!ev.target.closest('.viewbar')) setStatusOpen(false);
+  });
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') setStatusOpen(false); });
+
+  let toastTimer = 0;
+  function toast(text) {
+    const t = $('#toast');
+    t.textContent = text; t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+  }
+  // antes de gerar um arquivo: sem modelo válido não há o que baixar; com avisos reais, pede confirmação
+  function canDownload(checkWarnings) {
+    flushUpdate();
+    if (!last) {
+      toast('Não foi possível gerar o arquivo: ' + (lastFailure ? lastFailure.message : 'o modelo não foi calculado.'));
+      return false;
+    }
+    const warns = lastIssues.filter(it => it.level === 'warn');
+    if (checkWarnings && warns.length) {
+      const lines = warns.slice(0, 5).map(it => '• ' + it.text).join('\n') + (warns.length > 5 ? `\n… e mais ${warns.length - 5}` : '');
+      return confirm(`${plural(warns.length, 'aviso', 'avisos')} no projeto:\n\n${lines}\n\nBaixar mesmo assim?`);
+    }
+    return true;
   }
 
   // ---------- chapas ----------
@@ -546,7 +688,7 @@
   const baseName = () => `caixa_${cfg.W}x${cfg.D}x${cfg.H}_${cfg.t}mm`;
 
   function downloadSheet(i, fmt) {
-    if (!last) return;
+    if (!canDownload(true)) return;
     const sheets = last.lay.sheets;
     const name = baseName() + (sheets.length > 1 ? '_chapa' + (i + 1) : '') + '.' + fmt;
     if (fmt === 'svg') download(name, G.toSVG(sheets[i]), 'image/svg+xml');
@@ -555,7 +697,7 @@
   // um único arquivo com todas as chapas, empiladas na vertical e com o contorno de cada
   // chapa em azul (camada CHAPA no DXF), só de referência, não é linha de corte.
   function downloadCombined(fmt) {
-    if (!last) return;
+    if (!canDownload(true)) return;
     const combo = G.combineSheets(last.lay.sheets, Math.max(20, +cfg.margin * 4 || 20));
     const n = last.lay.sheets.length;
     const name = baseName() + (n > 1 ? `_${n}chapas` : '') + '.' + fmt;
@@ -573,7 +715,7 @@
   }
   $('#csv-qty').onchange = clampQty;
   $('#dl-csv').onclick = () => {
-    if (!last) return;
+    if (!canDownload(false)) return;
     const qty = clampQty();
     download(baseName() + '_cutlist.csv', G.toCSV(last.res, cfg, qty), 'text/csv');
   };
@@ -604,6 +746,8 @@
     const el = document.activeElement;
     if (el && el.type === 'number' && ev.target === el) el.blur();
   }, { passive: true });
+  // em tela estreita (celular) o painel de peças cobriria quase todo o 3D: começa recolhido
+  if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) cfg.piecesOpen = false;
   bindStatic();
   bindDivs();
   renderFaces();

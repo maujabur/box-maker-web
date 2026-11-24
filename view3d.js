@@ -37,6 +37,13 @@
     return new T.Color().setHSL(hsl.h, hsl.s, l);
   }
 
+  function holeInside(h, w, hgt) {
+    const th = (h.ang * Math.PI) / 180;
+    const hx = ((h.len - h.wid) / 2) * Math.abs(Math.cos(th)) + h.wid / 2;
+    const hy = ((h.len - h.wid) / 2) * Math.abs(Math.sin(th)) + h.wid / 2;
+    return h.cx - hx > 0 && h.cx + hx < w && h.cy - hy > 0 && h.cy + hy < hgt;
+  }
+
   function holePoints(h) {
     const r = h.wid / 2, half = Math.max((h.len - h.wid) / 2, 0);
     const th = (h.ang * Math.PI) / 180, c = Math.cos(th), s = Math.sin(th);
@@ -168,7 +175,9 @@
         const v = (view && view[p.name]) || { mode: 'solid', color: '#e0c48f' };
 
         const shape = new T.Shape(p.nominal.map(q => new T.Vector2(q[0], q[1])));
-        for (const h of p.holes) shape.holes.push(new T.Path(holePoints(h)));
+        // furo que sai da peça quebra a triangulação e esconde o modelo todo: no 3D ele é omitido
+        // (o aviso já aparece na lista, e o desenho de corte continua mostrando o furo como definido)
+        for (const h of p.holes) if (holeInside(h, p.w, p.h)) shape.holes.push(new T.Path(holePoints(h)));
         const geo = new T.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false, steps: 1 });
 
         const out = v.explode ? OUT[p.name] : [0, 0, 0];

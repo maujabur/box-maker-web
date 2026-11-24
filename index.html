@@ -153,11 +153,14 @@
 </aside>
 
 <section id="view">
-  <div class="tabs" role="tablist">
-    <button class="tab" data-tab="3d" role="tab">Montagem 3D</button>
-    <button class="tab" data-tab="2d" role="tab">Peças para corte</button>
+  <div class="viewbar">
+    <div class="tabs" role="tablist">
+      <button class="tab" data-tab="3d" role="tab">Montagem 3D</button>
+      <button class="tab" data-tab="2d" role="tab">Peças para corte</button>
+    </div>
+    <button type="button" id="status" class="status" hidden aria-expanded="false" aria-controls="status-list"></button>
+    <div id="status-list" class="status-list" hidden></div>
   </div>
-  <div id="msg"></div>
   <div id="pane2d" class="pane">
     <div id="preview"></div>
     <ul id="info"></ul>
@@ -168,6 +171,7 @@
       <div class="stage-hint">Arraste para girar · Shift ou botão direito para mover · roda para zoom · duplo clique recentraliza</div>
       <button id="cam-reset" class="btn small floating">Recentralizar</button>
       <div id="gl-error" hidden></div>
+      <div id="gl-invalid" hidden></div>
       <div id="pieces-wrap" class="pieces-overlay">
         <button type="button" id="pieces-toggle" class="pieces-toggle" aria-expanded="true"><span>Peças</span><i aria-hidden="true"></i></button>
         <div id="pieces"></div>
@@ -176,6 +180,8 @@
   </div>
 </section>
 </main>
+
+<div id="toast" role="status" hidden></div>
 
 <script src="vendor/three.min.js"></script>
 <script src="geometry.js"></script>
