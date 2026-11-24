@@ -148,6 +148,7 @@
   function bindStatic() {
     document.querySelectorAll('[data-k]').forEach(el => {
       const k = el.dataset.k;
+      if (el.dataset.tip == null) el.dataset.tip = el.title || '';
       if (el.type === 'checkbox') el.checked = !!cfg[k]; else el.value = cfg[k];
       const apply = () => {
         if (el.type === 'checkbox') cfg[k] = el.checked;
@@ -258,10 +259,10 @@
           g.className = 'grid';
           let yInput = null;
           g.append(
-            numInput('Horizontal (mm)', h, 'x'),
-            numInput('Vertical (mm)', h, 'y', i => { yInput = i; }),
-            numInput('Comprimento', h, 'length'),
-            numInput('Largura', h, 'width'));
+            numInput('Horizontal, do centro (mm)', h, 'x'),
+            numInput('Vertical, da borda (mm)', h, 'y', i => { yInput = i; }),
+            numInput('Comprimento (mm)', h, 'length'),
+            numInput('Largura (mm)', h, 'width'));
           const row = document.createElement('div');
           row.className = 'row';
           const sel = document.createElement('select');
@@ -278,10 +279,23 @@
             if (yInput) yInput.value = h.y;
             update();
           };
+          // ajuste automático: só aparece quando o furo não cabe (ver updateFixButtons)
+          const fix = document.createElement('button');
+          fix.textContent = 'Ajustar ao espaço';
+          fix.className = 'fix-btn';
+          fix.hidden = true;
+          fix.dataset.fix = key + ':' + idx;
+          fix.onclick = () => {
+            const fx = last && last.res.holeFixes[fix.dataset.fix];
+            if (!fx) return;
+            Object.assign(h, fx);
+            renderFaces();
+            update();
+          };
           const del = document.createElement('button');
           del.textContent = 'Remover';
           del.onclick = () => { face.holes.splice(idx, 1); renderFaces(); update(); };
-          row.append(sel, ctr, del);
+          row.append(sel, ctr, fix, del);
           hb.append(g, row);
           wrap.append(hb);
         });
@@ -485,7 +499,7 @@
   }
 
   function render() {
-    document.querySelectorAll('#lid-opts input, #lid-opts select').forEach(el => { el.disabled = !cfg.lidEnabled || (el.dataset.k === 'lidFit' && cfg.lidFitSame); });
+    applyRelevance();
     renderGrain();
     if (cfg.tab === '3d' && pieceLid !== cfg.lidEnabled) { pieceLid = cfg.lidEnabled; renderPieces(); }
     try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }
@@ -523,7 +537,42 @@
       prev.innerHTML = '<div class="empty">Não há peças para mostrar: corrija o erro indicado.</div>';
     }
     lastIssues = issues; lastFailure = failure;
+    updateFixButtons(last && last.res);
     showIssues(issues, failure);
+  }
+
+  // ---------- campos que não se aplicam ----------
+  // Desabilita (e explica no título) os campos sem efeito na configuração atual.
+  function applyRelevance() {
+    const lidOn = !!cfg.lidEnabled, teeth = lidOn && cfg.lidTeeth !== false;
+    const why = {
+      lidPos: !lidOn && 'Sem tampa.', lidTeeth: !lidOn && 'Sem tampa.',
+      lidClearance: !lidOn ? 'Sem tampa.' : (!teeth && cfg.lidPos !== 'inner') && 'A tampa lisa por fora não tem recuo.',
+      lidFit: !teeth ? (lidOn ? 'Tampa sem dentes.' : 'Sem tampa.') : cfg.lidFitSame && 'Segue a interferência geral.',
+      lidFitSame: !teeth && (lidOn ? 'Tampa sem dentes.' : 'Sem tampa.'),
+      toothLidX: !teeth && (lidOn ? 'Tampa sem dentes.' : 'Sem tampa.'),
+      toothLidY: !teeth && (lidOn ? 'Tampa sem dentes.' : 'Sem tampa.'),
+      chamferLid: !teeth && (lidOn ? 'Tampa sem dentes.' : 'Sem tampa.'),
+    };
+    for (const [k, reason] of Object.entries(why)) {
+      document.querySelectorAll(`[data-k="${k}"]`).forEach(el => {
+        el.disabled = !!reason;
+        const lab = el.closest('label, td');
+        if (reason) { el.title = 'Sem efeito: ' + reason; if (lab) lab.classList.add('na'); }
+        else { if (el.title.startsWith('Sem efeito')) el.title = el.dataset.tip || ''; if (lab) lab.classList.remove('na'); }
+      });
+    }
+    // linhas "Tampa X/Y" da tabela de dentes
+    document.querySelectorAll('[data-real="lidX"], [data-real="lidY"]').forEach(td => td.closest('tr').classList.toggle('na', !teeth));
+  }
+  function updateFixButtons(res) {
+    document.querySelectorAll('.fix-btn').forEach(b => {
+      const fx = res && res.holeFixes ? res.holeFixes[b.dataset.fix] : undefined;
+      b.hidden = fx === undefined;
+      b.disabled = fx === null;
+      b.title = fx === null ? 'O centro do furo está na faixa de encaixe ou fora da peça: mova o furo (horizontal/vertical).'
+        : fx ? `Reduz para ${fx.length} × ${fx.width} mm, mantendo o centro, para caber fora da faixa de encaixe.` : '';
+    });
   }
 
   // ---------- avisos e erros ----------

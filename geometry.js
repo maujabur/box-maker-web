@@ -323,6 +323,9 @@
       lidInfo = `Tampa por fora, com dentes: ${W} × ${D} mm; retângulo-guia (fundo dos rasgos) ${guide}.`;
     }
 
+    // sugestão de ajuste por furo ('face:índice' -> { length, width, y }): reduz comprimento e largura na
+    // mesma proporção, mantendo o centro, até o furo caber na área útil (fora da faixa de encaixe).
+    const holeFixes = {};
     const panels = specs.map(sp => {
       const nominal = buildOutline(sp.rect, sp.edges, t);
       const poly = offsetPoly(nominal, comp);
@@ -346,6 +349,7 @@
           if (!(wid > 0)) continue;
           const x = +h.x || 0, y = +h.y || 0;
           const xs = (h.mirror === 'x' && Math.abs(x) > 1e-6) ? [x, -x] : [x];
+          let fixK = 1, fixable = true;
           for (const xx of xs) {
             // x: deslocamento horizontal a partir do centro do lado; y: distância da borda do lado
             // até a borda mais próxima do furo (furo sempre paralelo ao lado).
@@ -364,16 +368,30 @@
             } else if (cx - hx < zone - EPS || cx + hx > sp.w - zone + EPS || cy - hy < zone - EPS || cy + hy > sp.h - zone + EPS) {
               warn('warn', `${tag}: furo (${pos}) invade a faixa de encaixe (${zone} mm da borda).`, { face: en.key, hole: hi });
             }
+            // escala que faz caber na área útil com o mesmo centro (só possível se o centro estiver nela)
+            const ax = Math.min(cx - zone, sp.w - zone - cx), ay = Math.min(cy - zone, sp.h - zone - cy);
+            if (ax <= 0 || ay <= 0) fixable = false;
+            else fixK = Math.min(fixK, ax / hx, ay / hy);
             const L2 = Math.max(len - (cfg.kerfComp ? kerf : 0), 0.1);
             const W2 = Math.max(wid - (cfg.kerfComp ? kerf : 0), 0.1);
             holes.push({ cx, cy, len: L2, wid: Math.min(W2, L2), ang });
+          }
+          if (!fixable || fixK < 1 - 1e-9) {
+            const fkey = en.key + ':' + hi;
+            if (!fixable) holeFixes[fkey] = null; // o centro está na faixa de encaixe ou fora: só movendo o furo
+            else {
+              const fl = v => Math.floor(v * 10 + 1e-6) / 10; // arredonda para baixo, 0,1 mm
+              const w2 = Math.max(0.1, fl(wid * fixK)), l2 = Math.max(w2, fl(len * fixK));
+              // y é medido até a borda do furo: com o centro fixo, cresce metade do que a largura encolheu
+              holeFixes[fkey] = { length: l2, width: w2, y: Math.round((y + (wid - w2) / 2) * 1000) / 1000 };
+            }
           }
         }
       }
       return { name: sp.name, label: FACE_NAME[sp.name], w: sp.w, h: sp.h, nominal, poly, holes };
     });
 
-    return { panels, warnings, info, lidInfo, divs, dims: { W, D, H, t } };
+    return { panels, warnings, info, lidInfo, divs, holeFixes, dims: { W, D, H, t } };
   }
 
   // ---------- layout na chapa ----------

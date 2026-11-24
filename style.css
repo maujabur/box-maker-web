@@ -146,6 +146,8 @@ table.teeth tbody th { text-align: left; font-weight: 600; color: var(--ink); wh
 table.teeth td.real { color: var(--muted); white-space: nowrap; }
 table.teeth input { min-width: 54px; }
 
+/* campos sem efeito na configuração atual */
+label.na, td.na, tr.na th, tr.na td { opacity: .55; }
 /* ---------- furos ---------- */
 .face { border-top: 1px dashed #d8cdb6; padding-top: 8px; margin-top: 8px; }
 .face > .head { display: flex; justify-content: space-between; align-items: center; }
@@ -154,6 +156,9 @@ table.teeth input { min-width: 54px; }
   background: #fff; border: 1px solid #d9d0be; border-radius: 7px; padding: 4px 9px; cursor: pointer; font-size: 12px; color: var(--ink);
 }
 .face > .head button:hover, .hole .row button:hover { border-color: var(--accent); color: var(--accent); }
+.hole .row button.fix-btn { border-color: #d9a21b; background: #fff4dc; font-weight: 600; }
+.hole .row button.fix-btn:disabled { opacity: .55; cursor: not-allowed; }
+.hole .row button[hidden] { display: none; }
 .hole { background: #fff9ee; border: 1px solid var(--line); border-radius: 9px; padding: 8px; margin-top: 8px; }
 .hole .grid { grid-template-columns: repeat(2, 1fr); margin: 0 0 8px; }
 .hole .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }

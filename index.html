@@ -93,36 +93,36 @@
 
   <details open>
     <summary>3. Dentes de encaixe <button type="button" class="help-btn inline" data-help="teeth">?</button></summary>
-    <p class="hint">X = comprimento, Y = largura, Z = altura. A largura em mm é aplicada a cada dente e a cada intervalo. As duas pontas são cantos lisos e absorvem a sobra (podem ficar maiores ou menores que o dente). Divisões = 2 × dentes + 1, sempre ímpar. Editar as divisões recalcula a largura em mm.</p>
+    <p class="hint">X = comprimento, Y = largura, Z = altura. A medida do dente em mm é aplicada a cada dente e a cada intervalo. As duas pontas são cantos lisos e absorvem a sobra (podem ficar maiores ou menores que o dente). Divisões = 2 × dentes + 1, sempre ímpar. Editar as divisões recalcula a largura em mm.</p>
     <table class="teeth">
-      <thead><tr><th></th><th>Largura (mm)</th><th>Divisões</th><th>Dentes · cantos</th></tr></thead>
+      <thead><tr><th></th><th>Dente (mm)</th><th>Divisões</th><th>Dentes · cantos</th></tr></thead>
       <tbody>
         <tr><th>Vertical (Z)</th>
-          <td data-l="Largura (mm)"><input type="number" step="any" min="1" data-k="toothVert"></td>
+          <td data-l="Dente (mm)"><input type="number" step="any" min="1" data-k="toothVert"></td>
           <td data-l="Divisões"><input type="number" step="2" min="3" data-div="vert" data-key="toothVert"></td>
           <td class="real" data-real="vert"></td></tr>
         <tr><th>Fundo X</th>
-          <td data-l="Largura (mm)"><input type="number" step="any" min="1" data-k="toothBaseX"></td>
+          <td data-l="Dente (mm)"><input type="number" step="any" min="1" data-k="toothBaseX"></td>
           <td data-l="Divisões"><input type="number" step="2" min="3" data-div="baseX" data-key="toothBaseX"></td>
           <td class="real" data-real="baseX"></td></tr>
         <tr><th>Fundo Y</th>
-          <td data-l="Largura (mm)"><input type="number" step="any" min="1" data-k="toothBaseY"></td>
+          <td data-l="Dente (mm)"><input type="number" step="any" min="1" data-k="toothBaseY"></td>
           <td data-l="Divisões"><input type="number" step="2" min="3" data-div="baseY" data-key="toothBaseY"></td>
           <td class="real" data-real="baseY"></td></tr>
         <tr><th>Tampa X</th>
-          <td data-l="Largura (mm)"><input type="number" step="any" min="1" data-k="toothLidX"></td>
+          <td data-l="Dente (mm)"><input type="number" step="any" min="1" data-k="toothLidX"></td>
           <td data-l="Divisões"><input type="number" step="2" min="3" data-div="lidX" data-key="toothLidX"></td>
           <td class="real" data-real="lidX"></td></tr>
         <tr><th>Tampa Y</th>
-          <td data-l="Largura (mm)"><input type="number" step="any" min="1" data-k="toothLidY"></td>
+          <td data-l="Dente (mm)"><input type="number" step="any" min="1" data-k="toothLidY"></td>
           <td data-l="Divisões"><input type="number" step="2" min="3" data-div="lidY" data-key="toothLidY"></td>
           <td class="real" data-real="lidY"></td></tr>
       </tbody>
     </table>
     <p class="hint">Chanfro nos dois lados do encaixe, na ponta do dente e na boca do rasgo (facilita a entrada):</p>
     <div class="grid g2">
-      <label>Em geral (mm)<input type="number" step="any" min="0" data-k="chamfer"></label>
-      <label>Na tampa (mm)<input type="number" step="any" min="0" data-k="chamferLid"></label>
+      <label>Chanfro geral (mm)<input type="number" step="any" min="0" data-k="chamfer"></label>
+      <label>Chanfro da tampa (mm)<input type="number" step="any" min="0" data-k="chamferLid"></label>
     </div>
   </details>
 
