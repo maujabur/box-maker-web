@@ -17,7 +17,8 @@ Por Mauricio Jabur – MauMaker. Built with Kiro.
 5. **Chapa e organização** — tamanho da chapa, espaço entre peças, margem e veio da madeira (da chapa e de cada peça).
 
 ## Exportação
-- **SVG / DXF** (botões do topo): um arquivo com todas as chapas organizadas automaticamente, empilhadas, cada uma com um contorno de referência em azul (camada `CHAPA` no DXF). As peças individuais de cada chapa também podem ser baixadas separadamente, na aba "Peças para corte".
+- **SVG / DXF** (botões do topo): um arquivo com todas as chapas do plano de corte, empilhadas, cada uma com um contorno de referência em azul (camada `CHAPA` no DXF). As peças individuais de cada chapa também podem ser baixadas separadamente, na aba "Peças para corte".
+- **Plano de corte**: calculado sob demanda (ao abrir a aba "Peças para corte", pelo botão ou ao baixar). Critério: menos chapas, depois a sobra mais contínua, depois o arranjo mais compacto. "Caixas" (no topo) repete as peças para fabricar várias caixas no mesmo plano.
 - **CSV**: lista de peças (sem furos/dentes) no formato de importação do [Cutlist Optimizer](https://www.opticutter.com/cut-list-optimizer/import/csv) (opticutter.com), para organizar o corte de várias caixas de uma vez.
 - **JSON**: salva/abre a configuração completa do projeto.
 

@@ -30,8 +30,8 @@
     <button id="dl-svg" class="btn primary" title="Um único arquivo com todas as chapas, empilhadas">Baixar SVG</button>
     <button id="dl-dxf" class="btn primary" title="Um único arquivo com todas as chapas, empilhadas">Baixar DXF</button>
     <span class="sep"></span>
-    <label class="csv-qty" title="Quantidade de caixas, para a lista de corte">
-      <span>Qtde.</span><input type="number" id="csv-qty" min="1" max="999" step="1" value="1">
+    <label class="csv-qty" title="Quantidade de caixas: entra no plano de corte (SVG/DXF) e na lista CSV">
+      <span>Caixas</span><input type="number" id="csv-qty" data-k="qty" min="1" max="999" step="1">
     </label>
     <button id="dl-csv" class="btn ghost">Baixar CSV</button>
     <button type="button" class="help-btn" data-help="csv">?</button>
@@ -134,7 +134,7 @@
 
   <details>
     <summary>5. Chapa e organização <button type="button" class="help-btn inline" data-help="sheet">?</button></summary>
-    <p class="hint">As peças são organizadas automaticamente em chapas. Se não couberem em uma, as que sobram vão para a próxima. "Baixar SVG" e "Baixar DXF" no topo juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência).</p>
+    <p class="hint">O plano de corte organiza as peças em chapas (menos chapas e sobra contínua). Se não couberem em uma, as que sobram vão para a próxima. Ele é calculado na aba "Peças para corte" ou ao baixar. "Baixar SVG" e "Baixar DXF" no topo juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência).</p>
     <div class="grid g2">
       <label>Largura da chapa (mm)<input type="number" step="any" min="50" data-k="sheetW"></label>
       <label>Altura da chapa (mm)<input type="number" step="any" min="50" data-k="sheetH"></label>
@@ -158,6 +158,7 @@
       <button class="tab" data-tab="3d" role="tab">Montagem 3D</button>
       <button class="tab" data-tab="2d" role="tab">Peças para corte</button>
     </div>
+    <div id="plan-bar" class="plan-bar" hidden></div>
     <button type="button" id="status" class="status" hidden aria-expanded="false" aria-controls="status-list"></button>
     <div id="status-list" class="status-list" hidden></div>
   </div>

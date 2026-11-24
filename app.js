@@ -42,7 +42,7 @@
     return {
       dimMode: 'outer', W: 500, D: 300, H: 200, t: 6, kerf: 0.1, kerfComp: true, fit: 0.1,
       toothVert: 20, toothBaseX: 20, toothBaseY: 20, toothLidX: 100, toothLidY: 100, chamfer: 0.5, chamferLid: 1,
-      bottomMode: 'wallTabs', lidEnabled: true, lidPos: 'outer', lidTeeth: true, lidClearance: 0, lidFitSame: false, lidFit: -0.1, piecesOpen: true,
+      bottomMode: 'wallTabs', lidEnabled: true, lidPos: 'outer', lidTeeth: true, lidClearance: 0, lidFitSame: false, lidFit: -0.1, piecesOpen: true, qty: 1,
       sheetW: 1000, sheetH: 800, gap: 5, margin: 5, grain: 'none',
       faces: defaultFaces(),
       tab: '3d',
@@ -101,6 +101,7 @@
     c.lidFit = +c.lidFit;
     if (!isFinite(c.lidFit)) c.lidFit = -0.1;
     c.lidFitSame = !!c.lidFitSame;
+    c.qty = Math.min(999, Math.max(1, Math.round(+c.qty || 1)));
     c.tab = '3d'; // sempre abre na montagem 3D
     return c;
   }
@@ -111,8 +112,8 @@
     teeth: `<strong>Dentes de encaixe</strong><p>Cada eixo (arestas verticais, fundo e tampa, em X e Y) tem uma largura alvo em mm e um número de divisões. Editar um recalcula o outro.</p><p>Divisões é sempre ímpar: as duas pontas são cantos lisos, que absorvem a sobra da divisão, e o miolo tem dentes e intervalos exatamente do tamanho digitado.</p><p>O chanfro arredonda a ponta dos dentes e a boca dos rasgos, nos dois lados do encaixe, para facilitar a montagem.</p>`,
     lid: `<strong>Fundo e tampa</strong><p>Por fora cobre as paredes; por dentro fica entre elas. Com dentes, o encaixe usa os mesmos dentes da seção 3; sem dentes, a peça é lisa, só encostada.</p><p><em>Recuo da tampa</em>: desloca para dentro o retângulo-guia da tampa (a base dos dentes, ou o fundo dos rasgos quando a tampa é por fora): guia = medida − 2 × (espessura + recuo). O tamanho da tampa, na ponta dos dentes, não muda. Não pode ser negativo; 0 = sem recuo.</p><p><em>Ajuste da tampa</em>: diferença total de largura entre os dentes e os rasgos da junção da tampa, independente da interferência da seção 1. Fica dividida meio a meio: positivo = aperto (o dente cresce metade e o rasgo encolhe metade); zero = encaixe nominal; negativo = folga (o dente encolhe metade e o rasgo cresce metade). Padrão −0,1 mm (folga). Marque "Ajuste da tampa igual à interferência geral" para a tampa seguir o valor da seção 1.</p>`,
     holes: `<strong>Furos oblongos</strong><p>Cada parede tem seu próprio conjunto de furos. Na tampa e no fundo, cada um dos quatro lados (frente, trás, esquerda, direita) tem o seu.</p><p>Horizontal: distância a partir do centro do lado, positivo para a direita (vista de fora, ou de pé diante do lado). Vertical: distância da borda até a borda mais próxima do furo. O furo é sempre paralelo ao lado.</p><p>"Centralizar" calcula o deslocamento vertical que deixa o furo no meio da parede (altura) ou do lado da tampa/fundo.</p>`,
-    sheet: `<strong>Chapa e organização</strong><p>As peças de uma caixa são organizadas automaticamente em chapas do tamanho informado. O que não couber em uma vai para a próxima.</p><p>Veio: se a chapa tiver veio (horizontal ou vertical), cada peça marcada com veio só gira 90° se isso mantiver seu eixo de veio paralelo ao da chapa. Peças sem veio marcado giram livremente.</p><p>"Baixar SVG" e "Baixar DXF", no topo, juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência, não é corte).</p>`,
-    csv: `<strong>Lista de corte (CSV)</strong><p>Gera um arquivo com o tamanho de cada peça (sem furos nem dentes, que esse formato não representa), no formato do <a href="https://www.opticutter.com/cut-list-optimizer/import/csv" target="_blank" rel="noopener">Cutlist Optimizer</a> (opticutter.com).</p><p>"Qtde." multiplica a lista pelo número de caixas que você vai fabricar, para organizar o corte de várias de uma vez. A chapa e o veio informados nas seções 1 e 5 já entram no arquivo.</p><p>O desenho detalhado de cada peça, com furos e dentes, continua saindo pelo SVG e pelo DXF.</p>`,
+    sheet: `<strong>Chapa e organização</strong><p>O plano de corte organiza as peças em chapas do tamanho informado; o que não couber em uma vai para a próxima. Ele é calculado ao abrir a aba "Peças para corte", pelo botão "Calcular plano" e, se estiver desatualizado, ao baixar o SVG ou o DXF.</p><p>Critério, em ordem: menos chapas; depois, a sobra mais contínua (um retângulo livre grande, aproveitável); depois, o arranjo mais compacto.</p><p>"Caixas", no topo, repete as peças no plano para fabricar várias caixas de uma vez (as peças ganham o número da caixa).</p><p>Veio: se a chapa tiver veio (horizontal ou vertical), cada peça marcada com veio só gira 90° se isso mantiver seu eixo de veio paralelo ao da chapa. Peças sem veio marcado giram livremente.</p><p>"Baixar SVG" e "Baixar DXF", no topo, juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência, não é corte).</p>`,
+    csv: `<strong>Lista de corte (CSV)</strong><p>Gera um arquivo com o tamanho de cada peça (sem furos nem dentes, que esse formato não representa), no formato do <a href="https://www.opticutter.com/cut-list-optimizer/import/csv" target="_blank" rel="noopener">Cutlist Optimizer</a> (opticutter.com).</p><p>"Caixas", no topo, multiplica a lista pelo número de caixas que você vai fabricar (o mesmo número vale para o plano de corte do SVG/DXF). A chapa e o veio informados nas seções 1 e 5 já entram no arquivo.</p><p>O desenho detalhado de cada peça, com furos e dentes, continua saindo pelo SVG e pelo DXF.</p>`,
   };
   function initHelp() {
     const pop = $('#help-pop'), body = $('#help-pop-body');
@@ -142,7 +143,9 @@
   try { cfg = normalize(JSON.parse(localStorage.getItem(STORE))); } catch (e) { cfg = normalize(null); }
 
   const $ = s => document.querySelector(s);
-  let last = null; // último resultado { lay, res }
+  let last = null; // último resultado do cálculo das peças { res }
+  // plano de corte: calculado sob demanda (botão, ao abrir a aba ou ao baixar). key = configuração usada.
+  let plan = null, planJob = null;
 
   // ---------- campos estáticos ----------
   function bindStatic() {
@@ -399,6 +402,8 @@
     $('#pane2d').hidden = tab !== '2d';
     $('#pane3d').hidden = tab !== '3d';
     if (tab === '3d') { applyPiecesOpen(); renderPieces(); refresh3d(); }
+    $('#plan-bar').hidden = tab !== '2d';
+    if (tab === '2d' && last && !planCurrent()) computePlan();
     try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }
   }
 
@@ -508,37 +513,34 @@
     let issues = [], failure = null;
     try {
       const res = G.build(cfg);
-      const lay = G.layout(res, cfg);
-      last = { lay, res };
+      last = { res };
       dirty3d = true;
       if (cfg.tab === '3d') refresh3d();
-      renderSheets(prev, lay);
       issues = res.warnings.slice();
       const d = res.dims;
       const li0 = document.createElement('li');
-      li0.textContent = `Caixa externa: ${d.W} × ${d.D} × ${d.H} mm. ${lay.sheets.length} ${lay.sheets.length === 1 ? 'chapa' : 'chapas'} de ${cfg.sheetW} × ${cfg.sheetH} mm.`;
+      li0.textContent = `Caixa externa: ${d.W} × ${d.D} × ${d.H} mm.`;
       info.append(li0);
       $('#lid-size').textContent = res.lidInfo || '';
       showDivs(res);
-      const anyGrain = cfg.grain !== 'none' && PIECES.some(([k]) => cfg.pieceGrain[k] !== 'none' && (k !== 'lid' || cfg.lidEnabled));
-      if (anyGrain) {
-        const free = G.layout({ panels: res.panels, warnings: [] }, Object.assign({}, cfg, { grain: 'none' }));
-        const li = document.createElement('li');
-        const nn = lay.sheets.length, nf = free.sheets.length;
-        li.textContent = `Veio: ${nn} ${nn === 1 ? 'chapa' : 'chapas'} com as restrições; ${nf} ${nf === 1 ? 'chapa' : 'chapas'} sem restrição de veio.`;
-        info.append(li);
-      }
       res.info.forEach(t => { const li = document.createElement('li'); li.textContent = t; info.append(li); });
     } catch (e) {
       last = null;
       failure = e;
       issues = [{ level: 'error', text: e.message, keys: e.keys || [] }];
       showDivs(null);
-      prev.innerHTML = '<div class="empty">Não há peças para mostrar: corrija o erro indicado.</div>';
     }
-    lastIssues = issues; lastFailure = failure;
+    buildIssues = issues; lastFailure = failure;
     updateFixButtons(last && last.res);
-    showIssues(issues, failure);
+    refreshIssues();
+    renderPlan();
+  }
+  // avisos do cálculo das peças + avisos do plano de corte (só se o plano estiver em dia)
+  let buildIssues = [];
+  function refreshIssues() {
+    const extra = planCurrent() ? plan.lay.warnings : [];
+    lastIssues = buildIssues.concat(extra);
+    showIssues(lastIssues, lastFailure);
   }
 
   // ---------- campos que não se aplicam ----------
@@ -680,23 +682,120 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
   }
-  // antes de gerar um arquivo: sem modelo válido não há o que baixar; com avisos reais, pede confirmação
-  function canDownload(checkWarnings) {
+  // antes de gerar um arquivo: sem modelo válido não há o que baixar
+  function canDownload() {
     flushUpdate();
     if (!last) {
       toast('Não foi possível gerar o arquivo: ' + (lastFailure ? lastFailure.message : 'o modelo não foi calculado.'));
       return false;
     }
+    return true;
+  }
+  // com avisos reais (das peças ou do plano), pede confirmação
+  function confirmWarnings() {
     const warns = lastIssues.filter(it => it.level === 'warn');
-    if (checkWarnings && warns.length) {
+    if (warns.length) {
       const lines = warns.slice(0, 5).map(it => '• ' + it.text).join('\n') + (warns.length > 5 ? `\n… e mais ${warns.length - 5}` : '');
       return confirm(`${plural(warns.length, 'aviso', 'avisos')} no projeto:\n\n${lines}\n\nBaixar mesmo assim?`);
     }
     return true;
   }
 
+  // ---------- plano de corte ----------
+  // a configuração que muda o plano (ignora o que é só da visualização 3D)
+  function planKey() {
+    const o = Object.assign({}, cfg);
+    ['view', 'tab', 'explode', 'piecesOpen'].forEach(k => delete o[k]);
+    return JSON.stringify(o);
+  }
+  const planCurrent = () => !!(plan && last && plan.key === planKey());
+  const chapas = n => plural(n, 'chapa', 'chapas');
+
+  // calcula em etapas (uma chapa por vez), devolvendo o controle à página entre elas
+  function computePlan() {
+    if (!last) return Promise.resolve(null);
+    const key = planKey();
+    if (planJob && planJob.key === key) return planJob.promise;
+    const job = { key, cancelled: false };
+    if (planJob) planJob.cancelled = true;
+    planJob = job;
+    const res = last.res, conf = JSON.parse(JSON.stringify(cfg));
+    job.promise = new Promise(resolve => {
+      const it = G.layoutSteps(res, conf);
+      let progress = null;
+      renderPlan({ busy: true });
+      const step = () => {
+        if (job.cancelled) { resolve(null); return; }
+        const t0 = performance.now();
+        let r;
+        do { r = it.next(); if (!r.done) progress = r.value; } while (!r.done && performance.now() - t0 < 40);
+        if (!r.done) { renderPlan({ busy: true, progress }); setTimeout(step, 0); return; }
+        const lay = r.value;
+        // veio: compara com o plano sem restrição (só com poucas peças, para não pesar)
+        let grainNote = '';
+        const anyGrain = conf.grain !== 'none' && PIECES.some(([k]) => conf.pieceGrain[k] !== 'none' && (k !== 'lid' || conf.lidEnabled));
+        if (anyGrain && res.panels.length * lay.qty <= 36) {
+          const nf = G.layout({ panels: res.panels }, Object.assign({}, conf, { grain: 'none' })).sheets.length;
+          grainNote = `Veio: ${chapas(lay.sheets.length)} com as restrições; ${chapas(nf)} sem restrição de veio.`;
+        }
+        plan = { key, lay, grainNote };
+        if (planJob === job) planJob = null;
+        refreshIssues();
+        renderPlan();
+        resolve(plan);
+      };
+      setTimeout(step, 30); // deixa a página mostrar "calculando" antes de começar
+    });
+    return job.promise;
+  }
+
+  function renderPlan(state) {
+    const bar = $('#plan-bar'), prev = $('#preview');
+    const st = state || {};
+    bar.classList.remove('stale', 'busy');
+    bar.innerHTML = '';
+    const msg = document.createElement('div'); msg.className = 'msg';
+    const btn = document.createElement('button');
+    btn.className = 'btn small primary';
+    btn.onclick = () => computePlan();
+    if (!last) {
+      prev.className = '';
+      prev.innerHTML = '<div class="empty">Não há peças para mostrar: corrija o erro indicado.</div>';
+      return;
+    }
+    if (st.busy) {
+      bar.classList.add('busy');
+      const p = st.progress;
+      msg.innerHTML = '<strong>Calculando plano de corte…</strong><small></small>';
+      msg.querySelector('small').textContent = p ? `${p.placed} de ${p.pieces} peças posicionadas · passada ${p.pass} de ${p.passes}` : 'Preparando…';
+      const pr = document.createElement('progress');
+      if (p) { pr.max = p.pieces * p.passes; pr.value = (p.pass - 1) * p.pieces + p.placed; }
+      bar.append(msg, pr);
+      if (plan) prev.className = 'stale';
+      return;
+    }
+    if (planCurrent()) {
+      const lay = plan.lay;
+      const q = lay.qty > 1 ? ` · ${lay.qty} caixas` : '';
+      msg.innerHTML = '<strong></strong><small></small>';
+      msg.querySelector('strong').textContent = `${chapas(lay.sheets.length)} de ${cfg.sheetW} × ${cfg.sheetH} mm${q}`;
+      msg.querySelector('small').textContent = plan.grainNote || 'Plano em dia com a configuração.';
+      bar.append(msg);
+      prev.className = '';
+      renderSheets(prev, lay);
+      return;
+    }
+    bar.classList.add('stale');
+    msg.innerHTML = plan ? '<strong>Plano desatualizado</strong><small>A configuração mudou depois do último cálculo.</small>'
+      : '<strong>Plano de corte ainda não calculado</strong><small>Ele também é calculado ao baixar o SVG ou o DXF.</small>';
+    btn.textContent = plan ? 'Recalcular plano' : 'Calcular plano de corte';
+    bar.append(msg, btn);
+    if (plan) { prev.className = 'stale'; renderSheets(prev, plan.lay, true); }
+    else { prev.className = ''; prev.innerHTML = ''; }
+  }
+
   // ---------- chapas ----------
-  function renderSheets(box, lay) {
+  function renderSheets(box, lay, stale) {
     box.innerHTML = '';
     const n = lay.sheets.length;
     lay.sheets.forEach((sh, i) => {
@@ -715,6 +814,7 @@
         b.className = 'btn small primary';
         b.textContent = fmt.toUpperCase();
         b.onclick = () => downloadSheet(i, fmt);
+        b.disabled = !!stale;
         btns.append(b);
       }
       head.append(title, btns);
@@ -736,35 +836,47 @@
   }
   const baseName = () => `caixa_${cfg.W}x${cfg.D}x${cfg.H}_${cfg.t}mm`;
 
+  // garante o plano em dia; se precisar calcular, avisa (o cálculo pode levar alguns segundos)
+  async function ensurePlan() {
+    if (planCurrent()) return plan;
+    toast('Calculando plano de corte…');
+    const p = await computePlan();
+    if (!p || !planCurrent()) { toast('O plano não ficou pronto: a configuração mudou durante o cálculo. Tente de novo.'); return null; }
+    toast(`Plano calculado: ${chapas(p.lay.sheets.length)}.`);
+    return p;
+  }
   function downloadSheet(i, fmt) {
-    if (!canDownload(true)) return;
-    const sheets = last.lay.sheets;
+    if (!canDownload() || !planCurrent() || !confirmWarnings()) return;
+    const sheets = plan.lay.sheets;
     const name = baseName() + (sheets.length > 1 ? '_chapa' + (i + 1) : '') + '.' + fmt;
     if (fmt === 'svg') download(name, G.toSVG(sheets[i]), 'image/svg+xml');
     else download(name, G.toDXF(sheets[i]), 'application/dxf');
   }
   // um único arquivo com todas as chapas, empiladas na vertical e com o contorno de cada
   // chapa em azul (camada CHAPA no DXF), só de referência, não é linha de corte.
-  function downloadCombined(fmt) {
-    if (!canDownload(true)) return;
-    const combo = G.combineSheets(last.lay.sheets, Math.max(20, +cfg.margin * 4 || 20));
-    const n = last.lay.sheets.length;
+  async function downloadCombined(fmt) {
+    if (!canDownload()) return;
+    const p = await ensurePlan();
+    if (!p || !confirmWarnings()) return;
+    const combo = G.combineSheets(p.lay.sheets, Math.max(20, +cfg.margin * 4 || 20));
+    const n = p.lay.sheets.length;
     const name = baseName() + (n > 1 ? `_${n}chapas` : '') + '.' + fmt;
     if (fmt === 'svg') download(name, G.toSVG(combo), 'image/svg+xml');
     else download(name, G.toDXF(combo), 'application/dxf');
   }
   $('#dl-svg').onclick = () => downloadCombined('svg');
   $('#dl-dxf').onclick = () => downloadCombined('dxf');
-  // quantidade de caixas da lista de corte: inteiro de 1 a 999 (o campo é corrigido na tela)
+  // quantidade de caixas (plano e CSV): inteiro de 1 a 999 (o campo é corrigido na tela)
   function clampQty() {
     const el = $('#csv-qty');
-    const q = Math.min(999, Math.max(1, Math.round(+el.value || 1)));
+    const q = Math.min(999, Math.max(1, Math.round(+el.value || cfg.qty || 1)));
     el.value = q;
+    if (cfg.qty !== q) { cfg.qty = q; update(); }
     return q;
   }
-  $('#csv-qty').onchange = clampQty;
+  $('#csv-qty').addEventListener('change', clampQty);
   $('#dl-csv').onclick = () => {
-    if (!canDownload(false)) return;
+    if (!canDownload()) return;
     const qty = clampQty();
     download(baseName() + '_cutlist.csv', G.toCSV(last.res, cfg, qty), 'text/csv');
   };
