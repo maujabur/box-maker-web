@@ -195,7 +195,7 @@
     const bot = cfg.bottomMode === 'plateTabs' ? 'plateTabs' : 'wallTabs';
     // Recuo da tampa: desloca para dentro o retângulo-guia (fundo dos recessos / base dos dentes)
     // da tampa. guia = medida - 2*(t + recuo). Recuo 0 = antiga tampa lisa por dentro.
-    // O tamanho da tampa (ponta dos dentes) não muda. Negativo não é checado.
+    // O tamanho da tampa (ponta dos dentes) não muda. Não pode ser negativo (erro abaixo).
     const cl = +cfg.lidClearance || 0;
     const lg = t + cl;
     const hasLid = lid !== 'none';
@@ -212,8 +212,8 @@
     const info = [];
     const zlo = bot === 'plateTabs' ? 0 : t;
     const zhi = (lid === 'wallTabs' || lid === 'overlay') ? H - t : H;
+    if (hasLid && cl < 0) throw new Error('Recuo da tampa não pode ser negativo.');
     if (lid !== 'none' && lid !== 'overlay') {
-      if (lg <= 0.01) throw new Error('Recuo da tampa negativo demais: espessura + recuo deve ser positivo.');
       if (W - 2 * lg <= 0 || D - 2 * lg <= 0) throw new Error('Recuo da tampa grande demais: o retângulo-guia da tampa não tem tamanho.');
     }
     if (zhi - zlo < 2 * t) throw new Error('Altura insuficiente para os dentes verticais.');
