@@ -42,8 +42,9 @@
     return {
       dimMode: 'outer', W: 500, D: 300, H: 200, t: 6, kerf: 0.1, kerfComp: true, fit: 0.1,
       toothVert: 20, toothBaseX: 20, toothBaseY: 20, toothLidX: 100, toothLidY: 100, chamfer: 0.5, chamferLid: 1,
-      bottomMode: 'wallTabs', lidEnabled: true, lidPos: 'outer', lidTeeth: true, lidClearance: 0, lidFitSame: false, lidFit: -0.1, piecesOpen: true, qty: 1,
-      sheetW: 1000, sheetH: 800, gap: 5, margin: 5, grain: 'none',
+      bottomMode: 'wallTabs', lidEnabled: true, lidPos: 'outer', lidTeeth: true, lidClearance: 0, lidFitSame: false, lidFit: -0.1, piecesOpen: true,
+      sheetW: 1000, sheetH: 800, gap: 0, margin: 5, grain: 'none', optMode: 'balanced', optTime: 15, showLeftover: true, minLeftover: 50,
+      cutList: [], editing: null, sheetZoom: 'fit', drawerOpen: false,
       faces: defaultFaces(),
       tab: '3d',
       pieceGrain: defaultGrain(),
@@ -52,8 +53,26 @@
     };
   }
 
+  // ---------- caixa x trabalho de corte ----------
+  // O que pertence ao trabalho de corte (vale para a lista toda) ou só à tela; o resto é da caixa e vai
+  // junto quando ela entra na lista.
+  const JOB_KEYS = ['sheetW', 'sheetH', 'gap', 'margin', 'grain', 'optMode', 'optTime', 'showLeftover', 'minLeftover', 'cutList', 'editing', 'sheetZoom', 'drawerOpen'];
+  const VIEW_KEYS = ['view', 'tab', 'explode', 'piecesOpen'];
+  const NOT_BOX = new Set(JOB_KEYS.concat(VIEW_KEYS, ['qty']));
+  // cópia só com as chaves da caixa
+  function boxOf(c) {
+    const b = {};
+    for (const k of Object.keys(c)) if (!NOT_BOX.has(k)) b[k] = c[k];
+    return JSON.parse(JSON.stringify(b));
+  }
+  const boxKey = b => JSON.stringify(b);
+  let uidSeq = 0;
+  const uid = () => 'c' + Date.now().toString(36) + (uidSeq++).toString(36);
+  // nome sugerido: medidas da caixa (a espessura aparece no grupo de chapas e na linha da lista)
+  const boxName = b => `${+b.W}×${+b.D}×${+b.H}`;
+
   // Mescla com os padrões para aceitar projetos antigos ou incompletos.
-  function normalize(src) {
+  function normalize(src, asBox) {
     const c = Object.assign(defaults(), src || {});
     // projetos antigos: lidMode / fundo liso
     if (src && src.lidEnabled === undefined && src.lidMode) {
@@ -101,7 +120,30 @@
     c.lidFit = +c.lidFit;
     if (!isFinite(c.lidFit)) c.lidFit = -0.1;
     c.lidFitSame = !!c.lidFitSame;
-    c.qty = Math.min(999, Math.max(1, Math.round(+c.qty || 1)));
+    if (asBox) return c;
+    // lista de corte: cada caixa é normalizada como um projeto (aceita caixas salvas por versões antigas)
+    const list = Array.isArray(src && src.cutList) ? src.cutList : [];
+    c.cutList = list.filter(e => e && e.box).map(e => ({
+      id: typeof e.id === 'string' && e.id ? e.id : uid(),
+      name: String(e.name || boxName(e.box)).slice(0, 80),
+      qty: Math.min(999, Math.max(0, Math.round(+e.qty || 0))),
+      box: boxOf(normalize(e.box, true)),
+    }));
+    // projetos antigos: "Caixas" (quantidade única) vira a lista com esta caixa
+    if (src && !Array.isArray(src.cutList) && Math.round(+src.qty || 1) > 1) {
+      const id = uid();
+      c.cutList = [{ id, name: boxName(c), qty: Math.min(999, Math.round(+src.qty)), box: boxOf(c) }];
+      c.editing = id;
+    }
+    delete c.qty;
+    if (!c.cutList.some(e => e.id === c.editing)) c.editing = null;
+    const z = c.sheetZoom;
+    c.sheetZoom = z === 'fit' || z === 'width' ? z : (isFinite(+z) && +z > 0 ? Math.min(400, Math.max(10, Math.round(+z))) : 'fit');
+    c.drawerOpen = !!c.drawerOpen;
+    if (!['fast', 'balanced', 'intensive'].includes(c.optMode)) c.optMode = 'balanced';
+    c.optTime = Math.min(300, Math.max(2, Math.round(+c.optTime || 15)));
+    c.showLeftover = c.showLeftover !== false;
+    c.minLeftover = Math.min(2000, Math.max(0, isFinite(+c.minLeftover) && c.minLeftover !== '' && c.minLeftover != null ? +c.minLeftover : 50));
     c.tab = '3d'; // sempre abre na montagem 3D
     return c;
   }
@@ -112,8 +154,8 @@
     teeth: `<strong>Dentes de encaixe</strong><p>Cada eixo (arestas verticais, fundo e tampa, em X e Y) tem uma largura alvo em mm e um número de divisões. Editar um recalcula o outro.</p><p>Divisões é sempre ímpar: as duas pontas são cantos lisos, que absorvem a sobra da divisão, e o miolo tem dentes e intervalos exatamente do tamanho digitado.</p><p>O chanfro arredonda a ponta dos dentes e a boca dos rasgos, nos dois lados do encaixe, para facilitar a montagem.</p>`,
     lid: `<strong>Fundo e tampa</strong><p>Por fora cobre as paredes; por dentro fica entre elas. Com dentes, o encaixe usa os mesmos dentes da seção 3; sem dentes, a peça é lisa, só encostada.</p><p><em>Recuo da tampa</em>: desloca para dentro o retângulo-guia da tampa (a base dos dentes, ou o fundo dos rasgos quando a tampa é por fora): guia = medida − 2 × (espessura + recuo). O tamanho da tampa, na ponta dos dentes, não muda. Não pode ser negativo; 0 = sem recuo.</p><p><em>Ajuste da tampa</em>: diferença total de largura entre os dentes e os rasgos da junção da tampa, independente da interferência da seção 1. Fica dividida meio a meio: positivo = aperto (o dente cresce metade e o rasgo encolhe metade); zero = encaixe nominal; negativo = folga (o dente encolhe metade e o rasgo cresce metade). Padrão −0,1 mm (folga). Marque "Ajuste da tampa igual à interferência geral" para a tampa seguir o valor da seção 1.</p>`,
     holes: `<strong>Furos oblongos</strong><p>Cada parede tem seu próprio conjunto de furos. Na tampa e no fundo, cada um dos quatro lados (frente, trás, esquerda, direita) tem o seu.</p><p>Horizontal: distância a partir do centro do lado, positivo para a direita (vista de fora, ou de pé diante do lado). Vertical: distância da borda até a borda mais próxima do furo. O furo é sempre paralelo ao lado.</p><p>"Centralizar" calcula o deslocamento vertical que deixa o furo no meio da parede (altura) ou do lado da tampa/fundo.</p>`,
-    sheet: `<strong>Chapa e organização</strong><p>O plano de corte organiza as peças em chapas do tamanho informado; o que não couber em uma vai para a próxima. Ele é calculado ao abrir a aba "Peças para corte", pelo botão "Calcular plano" e, se estiver desatualizado, ao baixar o SVG ou o DXF.</p><p>Critério, em ordem: menos chapas; depois, a sobra mais contínua (um retângulo livre grande, aproveitável); depois, o arranjo mais compacto.</p><p>"Caixas", no topo, repete as peças no plano para fabricar várias caixas de uma vez (as peças ganham o número da caixa).</p><p>Veio: se a chapa tiver veio (horizontal ou vertical), cada peça marcada com veio só gira 90° se isso mantiver seu eixo de veio paralelo ao da chapa. Peças sem veio marcado giram livremente.</p><p>"Baixar SVG" e "Baixar DXF", no topo, juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência, não é corte).</p>`,
-    csv: `<strong>Lista de corte (CSV)</strong><p>Gera um arquivo com o tamanho de cada peça (sem furos nem dentes, que esse formato não representa), no formato do <a href="https://www.opticutter.com/cut-list-optimizer/import/csv" target="_blank" rel="noopener">Cutlist Optimizer</a> (opticutter.com).</p><p>"Caixas", no topo, multiplica a lista pelo número de caixas que você vai fabricar (o mesmo número vale para o plano de corte do SVG/DXF). A chapa e o veio informados nas seções 1 e 5 já entram no arquivo.</p><p>O desenho detalhado de cada peça, com furos e dentes, continua saindo pelo SVG e pelo DXF.</p>`,
+    sheet: `<strong>Chapa e organização</strong><p>O plano de corte organiza as peças em chapas do tamanho informado; o que não couber em uma vai para a próxima. Ele é calculado ao abrir a aba "Peças para corte", pelo botão "Calcular plano" e, se estiver desatualizado, ao baixar o SVG ou o DXF.</p><p>Critério, em ordem: menos chapas; depois, a maior sobra retangular do trabalho (medida na geometria, sem a margem, que é descarte); depois, mais área em sobras aproveitáveis (com os dois lados de pelo menos o "menor lado de sobra aproveitável", padrão 50 mm), em menos pedaços; depois, sobras mais largas: um vão junto de uma faixa livre vale mais que o mesmo vão preso entre peças (conta a área onde cabe um quadrado de 2 e de 3 vezes o menor lado aproveitável); por fim, peças mais juntas, com a sobra numa região só.</p><p>Modos de otimização: <em>Rápida</em> testa poucas combinações e atualiza o plano enquanto você edita (com a aba aberta); <em>Equilibrada</em> (padrão) testa vários algoritmos (MaxRects, Guillotine, prateleiras, blocos de peças iguais), uma busca exata por menos chapas e uma busca curta, sempre com o mesmo resultado para o mesmo projeto; <em>Intensiva</em> continua buscando até o tempo máximo e mostra a melhor solução encontrada até ali. "Parar" encerra e fica com a melhor.</p><p>Espaço entre peças: distância mínima entre os contornos já compensados (kerf e interferência). Com 0, as peças podem encostar, mas nunca se sobrepõem; as linhas coincidentes continuam sendo cortadas duas vezes (a fusão de linhas fica com o software da cortadora).</p><p>Lista de corte: "Adicionar ao corte", no topo, guarda uma cópia da caixa do painel. Na aba "Peças para corte", o botão "Lista de corte" abre a lista, onde cada caixa tem nome e quantidade (0 = guardada, fora do plano) e pode ser editada (carrega no painel), atualizada (grava o painel nela), duplicada ou removida. Com a lista vazia, o plano usa a caixa do painel. Caixas de espessuras diferentes vão para chapas separadas, e o SVG, o DXF e o CSV saem um arquivo por espessura. As peças ganham o nome da caixa e o número da cópia.</p><p>Zoom: "Inteira" mostra a chapa toda na área visível; "Largura" ocupa a largura; o campo em % é relativo à largura.</p><p>Veio: se a chapa tiver veio (horizontal ou vertical), cada peça marcada com veio só gira 90° se isso mantiver seu eixo de veio paralelo ao da chapa. Peças sem veio marcado giram livremente.</p><p>"Baixar SVG" e "Baixar DXF", no topo, juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência, não é corte).</p>`,
+    csv: `<strong>Lista de corte (CSV)</strong><p>Gera um arquivo com o tamanho de cada peça (sem furos nem dentes, que esse formato não representa), no formato do <a href="https://www.opticutter.com/cut-list-optimizer/import/csv" target="_blank" rel="noopener">Cutlist Optimizer</a> (opticutter.com).</p><p>Com a lista de corte vazia, o arquivo traz as peças da caixa do painel; com a lista, traz as peças de todas as caixas com quantidade, cada uma como um grupo, com a quantidade de cada caixa (um arquivo por espessura). A chapa e o veio informados na seção 5 já entram no arquivo.</p><p>O desenho detalhado de cada peça, com furos e dentes, continua saindo pelo SVG e pelo DXF.</p>`,
   };
   function initHelp() {
     const pop = $('#help-pop'), body = $('#help-pop-body');
@@ -403,7 +445,9 @@
     $('#pane3d').hidden = tab !== '3d';
     if (tab === '3d') { applyPiecesOpen(); renderPieces(); refresh3d(); }
     $('#plan-bar').hidden = tab !== '2d';
-    if (tab === '2d' && last && !planCurrent()) computePlan();
+    $('#cut-drawer').hidden = !cfg.drawerOpen || tab !== '2d';
+    if (tab === '2d') { applyZoom(); renderList(); }
+    if (tab === '2d' && planPossible() && !planCurrent() && !(planJob && planJob.key === planKey())) computePlan(autoMode());
     try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }
   }
 
@@ -513,7 +557,7 @@
     let issues = [], failure = null;
     try {
       const res = G.build(cfg);
-      last = { res };
+      last = { res, key: boxKey(boxOf(cfg)) };
       dirty3d = true;
       if (cfg.tab === '3d') refresh3d();
       issues = res.warnings.slice();
@@ -533,13 +577,15 @@
     buildIssues = issues; lastFailure = failure;
     updateFixButtons(last && last.res);
     refreshIssues();
+    renderList();
     renderPlan();
+    autoPlan();
   }
   // avisos do cálculo das peças + avisos do plano de corte (só se o plano estiver em dia)
   let buildIssues = [];
   function refreshIssues() {
     const extra = planCurrent() ? plan.lay.warnings : [];
-    lastIssues = buildIssues.concat(extra);
+    lastIssues = buildIssues.concat(listIssues, extra);
     showIssues(lastIssues, lastFailure);
   }
 
@@ -683,9 +729,9 @@
     toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
   }
   // antes de gerar um arquivo: sem modelo válido não há o que baixar
-  function canDownload() {
+  function canDownload(fromPlan) {
     flushUpdate();
-    if (!last) {
+    if (fromPlan ? !planPossible() : !last) {
       toast('Não foi possível gerar o arquivo: ' + (lastFailure ? lastFailure.message : 'o modelo não foi calculado.'));
       return false;
     }
@@ -702,56 +748,253 @@
   }
 
   // ---------- plano de corte ----------
-  // a configuração que muda o plano (ignora o que é só da visualização 3D)
-  function planKey() {
-    const o = Object.assign({}, cfg);
-    ['view', 'tab', 'explode', 'piecesOpen'].forEach(k => delete o[k]);
-    return JSON.stringify(o);
-  }
-  const planCurrent = () => !!(plan && last && plan.key === planKey());
-  const chapas = n => plural(n, 'chapa', 'chapas');
+  // Modos: fast (Rápida), balanced (Equilibrada), intensive (Intensiva). O cálculo roda num Web Worker
+  // (montado em Blob, funciona por file:// e offline); sem Worker, roda na página, em etapas.
+  // Entrada: a lista de corte (cfg.cutList); vazia, usa a caixa do painel (1 unidade). Caixas de espessuras
+  // diferentes não dividem chapa: cada espessura é um grupo, otimizado à parte.
+  const MODE_RANK = { fast: 0, balanced: 1, intensive: 2 };
+  const MODE_NAME = { fast: 'Rápida', balanced: 'Equilibrada', intensive: 'Intensiva' };
+  const AUTO_FAST_MAX = 200; // peças: acima disso, a edição não recalcula sozinha (o Rápido já leva segundos)
+  const PLAN_JOB_KEYS = ['sheetW', 'sheetH', 'gap', 'margin', 'grain', 'minLeftover'];
 
-  // calcula em etapas (uma chapa por vez), devolvendo o controle à página entre elas
-  function computePlan() {
-    if (!last) return Promise.resolve(null);
-    const key = planKey();
-    if (planJob && planJob.key === key) return planJob.promise;
-    const job = { key, cancelled: false };
-    if (planJob) planJob.cancelled = true;
-    planJob = job;
-    const res = last.res, conf = JSON.parse(JSON.stringify(cfg));
-    job.promise = new Promise(resolve => {
-      const it = G.layoutSteps(res, conf);
-      let progress = null;
-      renderPlan({ busy: true });
-      const step = () => {
-        if (job.cancelled) { resolve(null); return; }
-        const t0 = performance.now();
-        let r;
-        do { r = it.next(); if (!r.done) progress = r.value; } while (!r.done && performance.now() - t0 < 40);
-        if (!r.done) { renderPlan({ busy: true, progress }); setTimeout(step, 0); return; }
-        const lay = r.value;
-        // veio: compara com o plano sem restrição (só com poucas peças, para não pesar)
-        let grainNote = '';
-        const anyGrain = conf.grain !== 'none' && PIECES.some(([k]) => conf.pieceGrain[k] !== 'none' && (k !== 'lid' || conf.lidEnabled));
-        if (anyGrain && res.panels.length * lay.qty <= 36) {
-          const nf = G.layout({ panels: res.panels }, Object.assign({}, conf, { grain: 'none' })).sheets.length;
-          grainNote = `Veio: ${chapas(lay.sheets.length)} com as restrições; ${chapas(nf)} sem restrição de veio.`;
-        }
-        plan = { key, lay, grainNote };
-        if (planJob === job) planJob = null;
-        refreshIssues();
-        renderPlan();
-        resolve(plan);
-      };
-      setTimeout(step, 30); // deixa a página mostrar "calculando" antes de começar
+  // peças de cada caixa da lista, calculadas uma vez por configuração
+  const buildCache = new Map();
+  function buildBox(box) {
+    const k = boxKey(box);
+    if (last && last.key === k) return { res: last.res };
+    let r = buildCache.get(k);
+    if (!r) {
+      try { r = { res: G.build(box) }; } catch (e) { r = { error: e.message }; }
+      if (buildCache.size > 50) buildCache.clear();
+      buildCache.set(k, r);
+    }
+    return r;
+  }
+  // caixas que entram no plano: [{ id, name, qty, box, res?, error? }]
+  function planEntries() {
+    if (!cfg.cutList.length) return last ? [{ id: null, name: boxName(cfg), qty: 1, box: boxOf(cfg), res: last.res }] : [];
+    return cfg.cutList.filter(e => e.qty > 0).map(e => Object.assign({}, e, buildBox(e.box)));
+  }
+  // a configuração que muda o plano: chapa, distâncias, veio da chapa, menor sobra e as caixas
+  function planKey() {
+    const job = {};
+    for (const k of PLAN_JOB_KEYS) job[k] = cfg[k];
+    const entries = cfg.cutList.length ? cfg.cutList.filter(e => e.qty > 0).map(e => [e.name, e.qty, e.box]) : [boxOf(cfg)];
+    return JSON.stringify({ job, entries });
+  }
+  // plano em dia; com minMode, também exige que tenha sido calculado num modo pelo menos tão bom
+  const planCurrent = minMode => !!(plan && plan.key === planKey() && (!minMode || MODE_RANK[plan.mode] >= MODE_RANK[minMode]));
+  const planPossible = () => (cfg.cutList.length ? planEntries().some(e => e.res) : !!last);
+  // modo ao abrir a aba e ao baixar: o escolhido, mas a intensiva só roda quando pedida (botão)
+  const autoMode = () => (cfg.optMode === 'intensive' ? 'balanced' : cfg.optMode);
+  const chapas = n => plural(n, 'chapa', 'chapas');
+  const m2 = a => (a / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' m²';
+  const mm = r => `${Math.round(r.w)} × ${Math.round(r.h)} mm`;
+  const tmm = t => `${(+t).toLocaleString('pt-BR')} mm`;
+  // fase do cálculo, pelo id da estratégia em andamento
+  const phaseOf = p => {
+    const id = (p && p.strategy) || '';
+    if (id === 'exata') return 'busca exata por menos chapas';
+    if (id === 'busca') return 'busca iterativa' + (p.evals ? ` · ${p.evals.toLocaleString('pt-BR')} arranjos avaliados` : '');
+    if (id === 'refine') return 'refinamento (compactação e redistribuição)';
+    if (id.startsWith('legacy')) return 'algoritmo de referência';
+    return id ? 'heurísticas de posicionamento' : 'preparando';
+  };
+  const secs = ms => (ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: ms < 10000 ? 1 : 0 }) + ' s';
+
+  // Grupos por espessura, cada um com seu problema (planSetup). Caixas com erro ficam de fora (com aviso).
+  let listIssues = [];
+  function planGroups(conf) {
+    const entries = planEntries();
+    listIssues = entries.filter(e => e.error).map(e => ({ level: 'warn', text: `Lista de corte: "${e.name}" ficou fora do plano (${e.error})`, keys: [] }));
+    const ok = entries.filter(e => e.res);
+    const byT = new Map();
+    for (const e of ok) {
+      const t = +e.box.t;
+      if (!byT.has(t)) byT.set(t, []);
+      byT.get(t).push(e);
+    }
+    const groups = [...byT.entries()].sort((a, b) => b[0] - a[0]).map(([t, list]) => ({
+      t, label: tmm(t), entries: list,
+      setup: G.planSetup({ jobs: list.map(e => ({ res: e.res, qty: e.qty, name: e.name, pieceGrain: e.box.pieceGrain || {} })) }, conf),
+    }));
+    // a intensiva divide o tempo entre os grupos
+    if (groups.length > 1) groups.forEach(g => { g.setup.opts.timeLimit = Math.max(2, g.setup.opts.timeLimit / groups.length); });
+    return groups;
+  }
+
+  // junta os planos dos grupos num só (chapas em sequência, cada uma sabe seu grupo)
+  function combineGroups(groups, partial) {
+    const sheets = [], warnings = [];
+    let qty = 0, stopped = false;
+    const done = groups.filter(g => g.lay || (partial && g === partial.group));
+    done.forEach(g => {
+      const lay = g.lay || partial.lay;
+      lay.sheets.forEach((sh, k) => { sh.group = { t: g.t, label: g.label, k, n: lay.sheets.length, multi: groups.length > 1 }; sheets.push(sh); });
+      warnings.push(...lay.warnings);
+      qty += lay.qty;
+      if (lay.stats && lay.stats.stopped) stopped = true;
     });
+    const big = sheets.reduce((m, sh, i) => (sh.leftover && sh.leftover.big && (!m || sh.leftover.big.w * sh.leftover.big.h > m.w * m.h) ? Object.assign({ sheet: i }, sh.leftover.big) : m), null);
+    return { sheets, warnings, qty, groups: done.map(g => ({ t: g.t, label: g.label, count: (g.lay || partial.lay).sheets.length })), stats: { big, stopped } };
+  }
+
+  let workerOk = true; // vira false se o Worker falhar: os cálculos seguintes rodam na página
+  let planTimer = 0;
+  function computePlan(mode) {
+    if (!planPossible()) return Promise.resolve(null);
+    const m = MODE_RANK[mode] != null ? mode : autoMode();
+    const key = planKey();
+    if (planJob && planJob.key === key && planJob.mode === m) return planJob.promise;
+    if (planJob) cancelJob(planJob);
+    const conf = JSON.parse(JSON.stringify(cfg));
+    conf.optMode = m;
+    let groups;
+    try { groups = planGroups(conf); } catch (e) { toast('Não foi possível preparar o plano: ' + e.message); return Promise.resolve(null); }
+    refreshIssues();
+    if (!groups.length) return Promise.resolve(null);
+    const job = { key, mode: m, conf, groups, gi: 0, t0: performance.now(), best: null, progress: null, cancelled: false, stopRequested: false };
+    job.promise = new Promise(resolve => { job.resolve = resolve; });
+    planJob = job;
+    clearInterval(planTimer);
+    planTimer = setInterval(() => { if (planJob === job) renderPlan(); }, 250);
+    renderPlan();
+    setTimeout(() => runGroups(job), 30);
     return job.promise;
+  }
+  // um grupo de cada vez; "Parar" encerra o grupo atual com a melhor solução e calcula os restantes no Rápido
+  async function runGroups(job) {
+    for (let i = 0; i < job.groups.length; i++) {
+      if (job.cancelled) return;
+      const g = job.groups[i];
+      job.gi = i; job.best = null; job.progress = null;
+      let lay = await runGroup(job, g, job.stopRequested ? 'fast' : job.mode);
+      if (job.cancelled) return;
+      if (!lay && job.stopRequested) lay = await runGroup(job, g, 'fast'); // parado antes da primeira solução
+      if (job.cancelled) return;
+      if (!lay) { failJob(job, job.error || 'nenhuma solução'); return; }
+      if (job.stopRequested && job.groups.length > 1) lay.stats.stopped = true;
+      g.lay = lay;
+    }
+    finishJob(job);
+  }
+  function runGroup(job, g, mode) {
+    return new Promise(resolve => {
+      job.groupDone = lay => { job.groupDone = null; job.worker = null; resolve(lay); };
+      const opts = Object.assign({}, g.setup.opts, { mode });
+      if (workerOk) runInWorker(job, g, opts); else runInPage(job, g, opts);
+    });
+  }
+  function endJob(job) {
+    if (job.worker) { job.worker.terminate(); job.worker = null; }
+    if (planJob === job) { planJob = null; clearInterval(planTimer); }
+  }
+  // outra configuração ou outro cálculo: descarta este
+  function cancelJob(job) { job.cancelled = true; endJob(job); job.resolve(null); }
+  // "Parar": fica com a melhor solução encontrada até aqui
+  function stopJob(job) {
+    job.stopRequested = true;
+    if (job.worker) {
+      job.worker.terminate(); job.worker = null;
+      const lay = job.best; if (lay) lay.stats.stopped = true;
+      if (job.groupDone) job.groupDone(lay);
+    } // na página: o motor para na próxima etapa e devolve a melhor
+  }
+  // melhor solução parcial do grupo atual (exibição progressiva)
+  function setBest(job, g, solution, strategy) {
+    try { job.best = g.setup.materialize(solution, { strategy, mode: job.mode }); } catch (e) { /* ignora a parcial inválida */ }
+  }
+  function finishJob(job) {
+    if (job.cancelled) return;
+    endJob(job);
+    const lay = combineGroups(job.groups);
+    // veio: compara com o plano sem restrição (Rápida, só com poucas peças e um grupo, para não pesar)
+    let grainNote = '';
+    const conf = job.conf;
+    const g0 = job.groups[0];
+    const anyGrain = conf.grain !== 'none' && job.groups.some(g => g.entries.some(e => Object.values(e.box.pieceGrain || {}).some(v => v !== 'none')));
+    const nPieces = job.groups.reduce((a, g) => a + g.setup.problem.items.length, 0);
+    if (anyGrain && job.groups.length === 1 && nPieces <= 36) {
+      try {
+        const nf = G.layout({ jobs: g0.entries.map(e => ({ res: e.res, qty: e.qty, name: e.name, pieceGrain: e.box.pieceGrain })) }, Object.assign({}, conf, { grain: 'none', optMode: 'fast' })).sheets.length;
+        grainNote = `Veio: ${chapas(lay.sheets.length)} com as restrições; ${chapas(nf)} sem restrição de veio (cálculo rápido).`;
+      } catch (e) { /* ignora */ }
+    }
+    plan = { key: job.key, lay, mode: job.mode, grainNote, elapsed: performance.now() - job.t0, stopped: !!lay.stats.stopped };
+    refreshIssues();
+    renderPlan();
+    job.resolve(plan);
+  }
+  function failJob(job, message) {
+    if (job.cancelled) return;
+    endJob(job);
+    toast('Plano de corte não calculado: ' + message);
+    renderPlan();
+    job.resolve(null);
+  }
+
+  function runInWorker(job, g, opts) {
+    const w = window.BoxPack && window.BoxPack.plan.createWorker();
+    if (!w) { workerOk = false; runInPage(job, g, opts); return; }
+    job.worker = w;
+    let heard = false;
+    const done = lay => { if (job.groupDone) job.groupDone(lay); };
+    w.onmessage = ev => {
+      heard = true;
+      if (job.cancelled || job.worker !== w) return;
+      const d = ev.data;
+      if (d.progress) job.progress = d.progress;
+      if (d.type === 'best') setBest(job, g, d.solution, d.strategy);
+      else if (d.type === 'done') {
+        w.terminate();
+        let lay = job.best;
+        try { if (d.solution) lay = g.setup.materialize(d.solution, { strategy: d.strategy, candidates: d.candidates, mode: d.mode }); } catch (e) { /* fica a parcial */ }
+        done(lay);
+      } else if (d.type === 'error') { w.terminate(); job.error = d.message; done(null); }
+    };
+    w.onerror = ev => {
+      if (ev && ev.preventDefault) ev.preventDefault();
+      if (job.cancelled || job.worker !== w) return;
+      w.terminate(); job.worker = null;
+      // o Worker não chegou a funcionar (navegador, política de segurança): calcula na página
+      if (!heard) { workerOk = false; runInPage(job, g, opts); } else { job.error = (ev && ev.message) || 'erro no cálculo'; done(null); }
+    };
+    w.postMessage({ problem: g.setup.liteProblem, opts });
+  }
+
+  function runInPage(job, g, opts) {
+    const BP = window.BoxPack;
+    const done = lay => { if (job.groupDone) job.groupDone(lay); };
+    let it;
+    try { it = BP.plan.steps(g.setup.problem, Object.assign({}, opts, { shouldStop: () => job.stopRequested })); }
+    catch (e) { job.error = e.message; done(null); return; }
+    const step = () => {
+      if (job.cancelled) return;
+      const t0 = performance.now();
+      let r;
+      try {
+        do {
+          r = it.next();
+          if (!r.done) {
+            job.progress = BP.plan.progressOf(r.value);
+            if (r.value.improved && r.value.best) setBest(job, g, r.value.best.solution, r.value.best.strategy);
+          }
+        } while (!r.done && performance.now() - t0 < 40);
+      } catch (e) { job.error = e.message; done(null); return; }
+      if (!r.done) { setTimeout(step, 0); return; }
+      const out = r.value;
+      if (!out.best) { job.error = 'nenhuma solução válida'; done(null); return; }
+      let lay = null;
+      try { lay = g.setup.materialize(out.best.solution, { strategy: out.best.strategy, candidates: out.report.length, mode: out.mode, stopped: out.stopped }); }
+      catch (e) { job.error = e.message; }
+      done(lay);
+    };
+    step();
   }
 
   // A barra é montada uma vez e depois só tem textos atualizados: se o botão fosse recriado a cada
   // recálculo, o clique que tira o foco de um campo (e dispara o recálculo) se perderia no meio.
-  let planUi = null, shownPlan = null, shownStale = null;
+  let planUi = null, shownPlan = null, shownStale = null, shownLeft = null;
   function planBar() {
     if (planUi) return planUi;
     const bar = $('#plan-bar');
@@ -761,59 +1004,112 @@
     const pr = document.createElement('progress');
     const btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'btn small primary';
-    btn.onclick = () => computePlan();
-    bar.append(msg, pr, btn);
-    planUi = { bar, msg, strong, small, pr, btn };
+    btn.onclick = () => computePlan(btn.dataset.mode);
+    const stop = document.createElement('button');
+    stop.type = 'button'; stop.className = 'btn small';
+    stop.textContent = 'Parar';
+    stop.title = 'Encerra o cálculo e fica com a melhor solução encontrada até aqui';
+    stop.onclick = () => { if (planJob) stopJob(planJob); };
+    bar.append(msg, pr, btn, stop);
+    planUi = { bar, msg, strong, small, pr, btn, stop };
     return planUi;
   }
   // desenha as chapas só quando o plano mostrado (ou seu estado) muda
   function showSheets(lay, stale) {
     const prev = $('#preview');
     prev.className = stale ? 'stale' : '';
-    if (shownPlan === lay && shownStale === stale) return;
-    shownPlan = lay; shownStale = stale;
+    const left = !!cfg.showLeftover;
+    if (shownPlan === lay && shownStale === stale && shownLeft === left) return;
+    shownPlan = lay; shownStale = stale; shownLeft = left;
     if (lay) renderSheets(prev, lay, stale); else prev.innerHTML = '';
   }
-  function renderPlan(state) {
-    const st = state || {};
+  // resumo do plano: aproveitamento, material restante, maior sobra do trabalho
+  function planSummary(lay) {
+    let used = 0, total = 0;
+    lay.sheets.forEach(sh => { used += sh.usage * sh.width * sh.height; total += sh.width * sh.height; });
+    const parts = [];
+    if (lay.groups.length > 1) parts.push(lay.groups.map(g => `${g.label}: ${chapas(g.count)}`).join(', '));
+    parts.push(`aproveitamento ${(100 * used / total).toFixed(0)}%`, `material restante ${m2(total - used)}`);
+    const big = lay.stats && lay.stats.big;
+    if (big) parts.push(`maior sobra ${mm(big)} (${m2(big.w * big.h)}, chapa ${big.sheet + 1})`);
+    return parts.join(' · ');
+  }
+  const caixas = n => plural(n, 'caixa', 'caixas');
+  function renderPlan() {
     const ui = planBar();
+    renderListChip();
     ui.bar.classList.remove('stale', 'busy');
     ui.pr.hidden = true;
     ui.btn.hidden = true;
+    ui.stop.hidden = true;
     ui.msg.hidden = false;
-    if (!last) {
+    if (!planPossible()) {
       ui.msg.hidden = true;
       shownPlan = null; shownStale = null;
       const prev = $('#preview');
       prev.className = '';
-      prev.innerHTML = '<div class="empty">Não há peças para mostrar: corrija o erro indicado.</div>';
+      prev.innerHTML = cfg.cutList.length && !cfg.cutList.some(e => e.qty > 0)
+        ? '<div class="empty">Todas as caixas da lista estão com quantidade 0.</div>'
+        : '<div class="empty">Não há peças para mostrar: corrija o erro indicado.</div>';
       return;
     }
-    if (st.busy) {
+    const job = planJob;
+    if (job) {
       ui.bar.classList.add('busy');
-      const p = st.progress;
-      ui.strong.textContent = 'Calculando plano de corte…';
-      ui.small.textContent = p ? `${p.placed} de ${p.pieces} peças posicionadas · passada ${p.pass} de ${p.passes}` : 'Preparando…';
+      const p = job.progress, el = performance.now() - job.t0;
+      const part = job.best ? combineGroups(job.groups, { group: job.groups[job.gi], lay: job.best }) : null;
+      const bestTxt = part ? ` · melhor até agora: ${chapas(part.sheets.length)}${part.stats.big ? ', maior sobra ' + mm(part.stats.big) : ''}` : '';
+      const grp = job.groups.length > 1 ? ` · ${job.groups[job.gi].label} (${job.gi + 1} de ${job.groups.length})` : '';
       ui.pr.hidden = false;
-      if (p) { ui.pr.max = p.pieces * p.passes; ui.pr.value = (p.pass - 1) * p.pieces + p.placed; }
-      else ui.pr.removeAttribute('value');
-      if (plan) showSheets(plan.lay, true);
+      ui.stop.hidden = false;
+      if (job.mode === 'intensive') {
+        const lim = job.groups.reduce((a, g) => a + g.setup.opts.timeLimit, 0) * 1000;
+        ui.strong.textContent = `Busca intensiva… ${secs(el)} de ${secs(lim)}${grp}`;
+        ui.small.textContent = phaseOf(p) + bestTxt;
+        ui.pr.max = lim; ui.pr.value = Math.min(el, lim);
+      } else {
+        ui.strong.textContent = `Calculando plano de corte (${MODE_NAME[job.mode]})… ${secs(el)}${grp}`;
+        ui.small.textContent = (p ? `etapa ${p.pass} de ${p.passes}: ${phaseOf(p)}` : 'preparando') + bestTxt;
+        if (p) { ui.pr.max = p.passes; ui.pr.value = p.pass; } else ui.pr.removeAttribute('value');
+      }
+      // mostra a melhor parcial (troca no máximo a cada meio segundo, para não pesar), senão o plano anterior
+      const t = performance.now();
+      if (part && job.best !== job.shownBestRaw && (!job.shownAt || t - job.shownAt > 500)) { job.shownBestRaw = job.best; job.shownBest = part; job.shownAt = t; }
+      if (job.shownBest) showSheets(job.shownBest, false);
+      else if (plan) showSheets(plan.lay, true);
       return;
     }
     if (planCurrent()) {
       const lay = plan.lay;
-      const q = lay.qty > 1 ? ` · ${lay.qty} caixas` : '';
+      const q = lay.qty > 1 ? ` · ${caixas(lay.qty)}` : '';
       ui.strong.textContent = `${chapas(lay.sheets.length)} de ${cfg.sheetW} × ${cfg.sheetH} mm${q}`;
-      ui.small.textContent = plan.grainNote || 'Plano em dia com a configuração.';
+      const how = `${MODE_NAME[plan.mode]}${plan.stopped ? ', interrompida' : ''}, ${secs(plan.elapsed)}`;
+      ui.small.textContent = planSummary(lay) + ` · ${how}` + (plan.grainNote ? ' · ' + plan.grainNote : '');
+      // próximo passo de otimização, se houver
+      const next = plan.mode === 'fast' ? (cfg.optMode === 'fast' ? null : 'balanced')
+        : (plan.mode === 'balanced' || plan.stopped) ? 'intensive' : null;
+      if (next) {
+        ui.btn.dataset.mode = next;
+        ui.btn.textContent = next === 'balanced' ? 'Otimizar (equilibrada)' : `Busca intensiva (${cfg.optTime} s)`;
+        ui.btn.hidden = false;
+      }
       showSheets(lay, false);
       return;
     }
     ui.bar.classList.add('stale');
     ui.strong.textContent = plan ? 'Plano desatualizado' : 'Plano de corte ainda não calculado';
-    ui.small.textContent = plan ? 'A configuração mudou depois do último cálculo.' : 'Ele também é calculado ao baixar o SVG ou o DXF.';
-    ui.btn.textContent = plan ? 'Recalcular plano' : 'Calcular plano de corte';
+    ui.small.textContent = plan ? 'A configuração ou a lista de corte mudou depois do último cálculo.' : 'Ele também é calculado ao baixar o SVG ou o DXF.';
+    ui.btn.dataset.mode = cfg.optMode;
+    ui.btn.textContent = (plan ? 'Recalcular plano' : 'Calcular plano de corte') + (cfg.optMode === 'balanced' ? '' : ` (${MODE_NAME[cfg.optMode].toLowerCase()})`);
     ui.btn.hidden = false;
     showSheets(plan ? plan.lay : null, true);
+  }
+  // durante a edição, com a aba aberta: recalcula no modo Rápido (só com poucas peças)
+  function autoPlan() {
+    if (cfg.tab !== '2d' || !planPossible() || planCurrent()) return;
+    if (planJob && planJob.key === planKey()) return; // já há um cálculo desta configuração (ex.: intensiva)
+    const n = planEntries().reduce((a, e) => a + (e.res ? e.res.panels.length * e.qty : 0), 0);
+    if (n <= AUTO_FAST_MAX) computePlan('fast');
   }
 
   // ---------- chapas ----------
@@ -827,7 +1123,11 @@
       head.className = 'sheet-head';
       const title = document.createElement('span');
       const names = sh.items.map(it => it.label + (it.rotated ? ' (girada)' : '')).join(', ');
-      title.innerHTML = `<strong>Chapa ${i + 1} de ${n}</strong> · ${sh.items.length} ${sh.items.length === 1 ? 'peça' : 'peças'} · aproveitamento ${(sh.usage * 100).toFixed(0)}%<br><small></small>`;
+      const big = sh.leftover && sh.leftover.big;
+      const left = sh.oversize ? ' · chapa ampliada (peça maior que a chapa)' : big ? ` · maior sobra ${mm(big)} (${m2(big.w * big.h)})` : ' · sem sobra retangular';
+      const g = sh.group;
+      const which = g && g.multi ? `${g.label} · chapa ${g.k + 1} de ${g.n}` : `Chapa ${i + 1} de ${n}`;
+      title.innerHTML = `<strong>${which}</strong> · ${sh.items.length} ${sh.items.length === 1 ? 'peça' : 'peças'} · aproveitamento ${(sh.usage * 100).toFixed(0)}%${left}<br><small></small>`;
       title.querySelector('small').textContent = names;
       const btns = document.createElement('span');
       btns.className = 'sheet-btns';
@@ -836,16 +1136,200 @@
         b.className = 'btn small primary';
         b.textContent = fmt.toUpperCase();
         b.onclick = () => downloadSheet(i, fmt);
-        b.disabled = !!stale;
+        b.disabled = !!stale || !planCurrent() || plan.lay !== lay;
         btns.append(b);
       }
       head.append(title, btns);
       const svg = document.createElement('div');
       svg.className = 'sheet-svg';
-      svg.innerHTML = G.toSVG(sh, { preview: true });
+      svg.innerHTML = G.toSVG(sh, { preview: true, leftover: !!cfg.showLeftover });
       wrap.append(head, svg);
       box.append(wrap);
     });
+    applyZoom();
+  }
+
+  // ---------- zoom das chapas ----------
+  // 'fit' = a chapa inteira na área visível; 'width' = largura da área; número = % da largura da área
+  function zoomBase() {
+    const pane = $('#pane2d'), prev = $('#preview');
+    const cw = Math.max(100, prev.clientWidth - 14); // descontado o recuo interno da chapa
+    const tools = $('#plan-tools');
+    const head = prev.querySelector('.sheet-head');
+    const ch = pane.clientHeight - (tools ? tools.offsetHeight : 0) - (head ? head.offsetHeight + 8 : 50) - 30;
+    return { cw, ch: Math.max(120, ch) };
+  }
+  function applyZoom() {
+    const { cw, ch } = zoomBase();
+    let shown = null;
+    document.querySelectorAll('#preview .sheet-svg svg').forEach(svg => {
+      const vb = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+      const ar = vb[2] > 0 && vb[3] > 0 ? vb[2] / vb[3] : 1.25;
+      let w;
+      if (cfg.sheetZoom === 'width') w = cw;
+      else if (cfg.sheetZoom === 'fit') w = Math.min(cw, ch * ar);
+      else w = cw * cfg.sheetZoom / 100;
+      svg.style.width = Math.round(w) + 'px';
+      svg.style.height = 'auto';
+      if (shown == null) shown = Math.round(100 * w / cw);
+    });
+    const z = $('#zoom-pct');
+    if (z && document.activeElement !== z) z.value = shown != null ? shown : (typeof cfg.sheetZoom === 'number' ? cfg.sheetZoom : 100);
+    document.querySelectorAll('[data-zoom]').forEach(b => b.classList.toggle('on', b.dataset.zoom === cfg.sheetZoom));
+  }
+  function setZoom(z) {
+    cfg.sheetZoom = z;
+    try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }
+    applyZoom();
+  }
+  function initZoom() {
+    document.querySelectorAll('[data-zoom]').forEach(b => { b.onclick = () => setZoom(b.dataset.zoom); });
+    const pct = $('#zoom-pct');
+    const cur = () => Math.round(+pct.value || 100);
+    pct.onchange = () => setZoom(Math.min(400, Math.max(10, cur())));
+    $('#zoom-out').onclick = () => setZoom(Math.max(10, cur() - 10));
+    $('#zoom-in').onclick = () => setZoom(Math.min(400, cur() + 10));
+    window.addEventListener('resize', () => { if (cfg.tab === '2d') applyZoom(); });
+  }
+
+  // ---------- lista de corte ----------
+  // Cada caixa da lista é uma cópia da caixa do painel no momento em que foi adicionada (ou atualizada).
+  // "Editar" carrega a caixa no painel; "Atualizar" grava o painel de volta na caixa.
+  const unidades = n => plural(n, 'unidade', 'unidades');
+  const panelKey = () => boxKey(boxOf(cfg));
+  const editingEntry = () => cfg.cutList.find(e => e.id === cfg.editing) || null;
+  const panelInList = () => cfg.cutList.some(e => boxKey(e.box) === panelKey());
+  function listChanged() {
+    try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }
+    renderList();
+    update();
+  }
+  function uniqueName(name) {
+    const names = new Set(cfg.cutList.map(e => e.name));
+    if (!names.has(name)) return name;
+    let k = 2;
+    while (names.has(`${name} (${k})`)) k++;
+    return `${name} (${k})`;
+  }
+  function addToList() {
+    flushUpdate();
+    if (!last) { toast('A caixa do painel tem erro: corrija antes de adicionar ao corte.'); return; }
+    const e = { id: uid(), name: uniqueName(boxName(cfg)), qty: 1, box: boxOf(cfg) };
+    cfg.cutList.push(e);
+    cfg.editing = e.id;
+    toast(`"${e.name}" adicionada à lista de corte (${plural(cfg.cutList.length, 'caixa', 'caixas')}).`);
+    listChanged();
+  }
+  function editEntry(e) {
+    const ed = editingEntry();
+    const dirty = ed ? boxKey(ed.box) !== panelKey() : (cfg.cutList.length && !panelInList());
+    if (dirty && !confirm(ed
+      ? `A caixa do painel tem alterações que não foram gravadas em "${ed.name}". Carregar "${e.name}" e descartá-las?`
+      : `A caixa do painel não está na lista de corte. Carregar "${e.name}" e descartá-la?`)) return;
+    Object.assign(cfg, JSON.parse(JSON.stringify(e.box)));
+    cfg.editing = e.id;
+    bindStatic(); renderFaces();
+    listChanged();
+  }
+  function updateEntry(e) {
+    flushUpdate();
+    if (!last) { toast('A caixa do painel tem erro: corrija antes de atualizar.'); return; }
+    e.box = boxOf(cfg);
+    toast(`"${e.name}" atualizada com a caixa do painel.`);
+    listChanged();
+  }
+  function duplicateEntry(e) {
+    const c = { id: uid(), name: uniqueName(e.name), qty: e.qty, box: JSON.parse(JSON.stringify(e.box)) };
+    cfg.cutList.splice(cfg.cutList.indexOf(e) + 1, 0, c);
+    listChanged();
+  }
+  function removeEntry(e) {
+    if (!confirm(`Remover "${e.name}" da lista de corte?`)) return;
+    cfg.cutList.splice(cfg.cutList.indexOf(e), 1);
+    if (cfg.editing === e.id) cfg.editing = null;
+    listChanged();
+  }
+  // resumo na barra de ferramentas das chapas (abre a gaveta)
+  function renderListChip() {
+    const chip = $('#list-chip');
+    if (!chip) return;
+    const active = cfg.cutList.filter(e => e.qty > 0);
+    const units = active.reduce((a, e) => a + e.qty, 0);
+    chip.textContent = cfg.cutList.length
+      ? `Lista de corte: ${caixas(cfg.cutList.length)}${active.length < cfg.cutList.length ? ` (${active.length} no plano)` : ''} · ${unidades(units)}`
+      : 'Lista de corte: vazia (usa a caixa do painel)';
+    chip.setAttribute('aria-expanded', cfg.drawerOpen ? 'true' : 'false');
+    const ed = editingEntry();
+    chip.classList.toggle('warn', !!(cfg.cutList.length && (ed ? boxKey(ed.box) !== panelKey() : !panelInList())));
+  }
+  function setDrawer(open) {
+    cfg.drawerOpen = !!open;
+    $('#cut-drawer').hidden = !cfg.drawerOpen || cfg.tab !== '2d';
+    try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }
+    renderList();
+  }
+  function renderList() {
+    renderListChip();
+    const dr = $('#cut-drawer');
+    if (!dr || dr.hidden) return;
+    // logo abaixo da barra de ferramentas das chapas (o zoom continua visível)
+    const tools = $('#plan-tools'), view = $('#view');
+    if (tools && view) dr.style.top = Math.round(tools.getBoundingClientRect().bottom - view.getBoundingClientRect().top + 4) + 'px';
+    const body = $('#cut-list');
+    body.innerHTML = '';
+    const pk = panelKey();
+    const ed = editingEntry();
+    // aviso sobre a caixa do painel
+    const note = $('#cut-note');
+    note.hidden = true;
+    if (!cfg.cutList.length) {
+      note.hidden = false;
+      note.innerHTML = 'A lista está vazia: o plano usa a caixa do painel (1 unidade). Use <strong>Adicionar ao corte</strong> para montar a lista.';
+    } else if (ed && boxKey(ed.box) !== pk) {
+      note.hidden = false;
+      note.textContent = `A caixa do painel tem alterações que não estão em "${ed.name}": use Atualizar para gravá-las (o plano usa a versão da lista).`;
+    } else if (!ed && !cfg.cutList.some(e => boxKey(e.box) === pk)) {
+      note.hidden = false;
+      note.textContent = 'A caixa do painel não está na lista: mudanças no painel não entram no plano. Use Adicionar ao corte para incluí-la.';
+    }
+    cfg.cutList.forEach(e => {
+      const row = document.createElement('div');
+      const isEd = e.id === cfg.editing;
+      const modified = isEd && boxKey(e.box) !== pk;
+      row.className = 'cut-row' + (e.qty > 0 ? '' : ' off') + (isEd ? ' editing' : '');
+      const name = document.createElement('input');
+      name.type = 'text'; name.value = e.name; name.className = 'cut-name'; name.maxLength = 80;
+      name.title = 'Nome da caixa (aparece nas peças do plano)';
+      name.onchange = () => { const v = name.value.trim(); e.name = v || boxName(e.box); listChanged(); };
+      const qty = document.createElement('input');
+      qty.type = 'number'; qty.min = 0; qty.max = 999; qty.step = 1; qty.value = e.qty; qty.className = 'cut-qty';
+      qty.title = 'Quantidade (0 = fica guardada na lista, fora do plano)';
+      qty.onchange = () => { e.qty = Math.min(999, Math.max(0, Math.round(+qty.value || 0))); qty.value = e.qty; listChanged(); };
+      const info = document.createElement('small');
+      const b = e.box;
+      info.textContent = `${b.dimMode === 'inner' ? 'internas' : 'externas'} · ${tmm(b.t)}` + (isEd ? (modified ? ' · no painel, modificada' : ' · no painel') : '');
+      if (modified) info.className = 'mod';
+      const btns = document.createElement('span');
+      btns.className = 'cut-btns';
+      const mk = (txt, title, fn, dis) => { const x = document.createElement('button'); x.type = 'button'; x.className = 'btn small'; x.textContent = txt; x.title = title; x.disabled = !!dis; x.onclick = () => fn(e); btns.append(x); };
+      mk('Editar', 'Carrega esta caixa no painel', editEntry, isEd && !modified);
+      mk('Atualizar', 'Grava a caixa do painel nesta linha', updateEntry, !modified);
+      mk('Duplicar', 'Cria uma cópia desta caixa na lista', duplicateEntry);
+      mk('Remover', 'Tira esta caixa da lista', removeEntry);
+      const top = document.createElement('div'); top.className = 'cut-top';
+      const ql = document.createElement('label'); ql.className = 'cut-ql'; ql.append('Qtd', qty);
+      top.append(name, ql);
+      row.append(top, info, btns);
+      body.append(row);
+    });
+  }
+  function initList() {
+    $('#add-cut').onclick = addToList;
+    $('#list-chip').onclick = () => setDrawer(!cfg.drawerOpen);
+    $('#cut-close').onclick = () => setDrawer(false);
+    $('#cut-add2').onclick = addToList;
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && cfg.drawerOpen && cfg.tab === '2d') setDrawer(false); });
+    $('#cut-drawer').hidden = !cfg.drawerOpen || cfg.tab !== '2d';
   }
 
   // ---------- arquivos ----------
@@ -860,49 +1344,79 @@
 
   // garante o plano em dia; se precisar calcular, avisa (o cálculo pode levar alguns segundos)
   async function ensurePlan() {
-    if (planCurrent()) return plan;
-    toast('Calculando plano de corte…');
-    const p = await computePlan();
+    // aceita o plano em dia calculado pelo menos no modo automático (o Rápido só se ele for o escolhido)
+    if (planCurrent(autoMode())) return plan;
+    if (planJob && planJob.key === planKey() && MODE_RANK[planJob.mode] >= MODE_RANK[autoMode()]) {
+      toast('Aguardando o cálculo do plano de corte…');
+    } else toast('Calculando plano de corte…');
+    const p = await (planJob && planJob.key === planKey() && MODE_RANK[planJob.mode] >= MODE_RANK[autoMode()] ? planJob.promise : computePlan(autoMode()));
     if (!p || !planCurrent()) { toast('O plano não ficou pronto: a configuração mudou durante o cálculo. Tente de novo.'); return null; }
     toast(`Plano calculado: ${chapas(p.lay.sheets.length)}.`);
     return p;
   }
-  function downloadSheet(i, fmt) {
-    if (!canDownload() || !planCurrent() || !confirmWarnings()) return;
-    const sheets = plan.lay.sheets;
-    const name = baseName() + (sheets.length > 1 ? '_chapa' + (i + 1) : '') + '.' + fmt;
-    if (fmt === 'svg') download(name, G.toSVG(sheets[i]), 'image/svg+xml');
-    else download(name, G.toDXF(sheets[i]), 'application/dxf');
+  // nome base dos arquivos do plano: a caixa (lista vazia ou uma só caixa) ou o trabalho
+  function planBaseName() {
+    const act = cfg.cutList.filter(e => e.qty > 0);
+    if (act.length <= 1) {
+      const b = act.length ? act[0].box : cfg;
+      return `caixa_${b.W}x${b.D}x${b.H}_${b.t}mm` + (act.length && act[0].qty > 1 ? `_${act[0].qty}un` : '');
+    }
+    return `corte_${act.reduce((a, e) => a + e.qty, 0)}caixas`;
   }
-  // um único arquivo com todas as chapas, empiladas na vertical e com o contorno de cada
+  // grupos (espessuras) do plano: [{ t, sheets: [índices] }]
+  function planGroupsOf(lay) {
+    const m = new Map();
+    lay.sheets.forEach((sh, i) => { const t = sh.group ? sh.group.t : 0; if (!m.has(t)) m.set(t, []); m.get(t).push(i); });
+    return [...m.entries()].map(([t, idx]) => ({ t, idx }));
+  }
+  function downloadSheet(i, fmt) {
+    if (!canDownload(true) || !planCurrent() || !confirmWarnings()) return;
+    const sheets = plan.lay.sheets, sh = sheets[i], g = sh.group;
+    const suffix = g && g.multi ? `_${g.t}mm_chapa${g.k + 1}` : (sheets.length > 1 ? '_chapa' + (i + 1) : '');
+    const name = planBaseName() + suffix + '.' + fmt;
+    if (fmt === 'svg') download(name, G.toSVG(sh), 'image/svg+xml');
+    else download(name, G.toDXF(sh), 'application/dxf');
+  }
+  // um arquivo por espessura com todas as chapas dela, empilhadas na vertical e com o contorno de cada
   // chapa em azul (camada CHAPA no DXF), só de referência, não é linha de corte.
   async function downloadCombined(fmt) {
-    if (!canDownload()) return;
+    if (!canDownload(true)) return;
     const p = await ensurePlan();
     if (!p || !confirmWarnings()) return;
-    const combo = G.combineSheets(p.lay.sheets, Math.max(20, +cfg.margin * 4 || 20));
-    const n = p.lay.sheets.length;
-    const name = baseName() + (n > 1 ? `_${n}chapas` : '') + '.' + fmt;
-    if (fmt === 'svg') download(name, G.toSVG(combo), 'image/svg+xml');
-    else download(name, G.toDXF(combo), 'application/dxf');
+    const groups = planGroupsOf(p.lay);
+    groups.forEach((g, k) => {
+      const sheets = g.idx.map(i => p.lay.sheets[i]);
+      const combo = G.combineSheets(sheets, Math.max(20, +cfg.margin * 4 || 20));
+      const n = sheets.length;
+      const name = planBaseName() + (groups.length > 1 ? `_${g.t}mm` : '') + (n > 1 ? `_${n}chapas` : '') + '.' + fmt;
+      // vários arquivos: um pequeno intervalo entre eles (alguns navegadores bloqueiam downloads simultâneos)
+      setTimeout(() => {
+        if (fmt === 'svg') download(name, G.toSVG(combo), 'image/svg+xml');
+        else download(name, G.toDXF(combo), 'application/dxf');
+      }, k * 400);
+    });
+    if (groups.length > 1) toast(`${groups.length} arquivos, um por espessura (${groups.map(g => tmm(g.t)).join(', ')}).`);
   }
   $('#dl-svg').onclick = () => downloadCombined('svg');
   $('#dl-dxf').onclick = () => downloadCombined('dxf');
-  // quantidade de caixas (plano e CSV): inteiro de 1 a 999 (o campo é corrigido na tela)
-  function clampQty() {
-    const el = $('#csv-qty');
-    const q = Math.min(999, Math.max(1, Math.round(+el.value || cfg.qty || 1)));
-    el.value = q;
-    if (cfg.qty !== q) { cfg.qty = q; update(); }
-    return q;
-  }
-  $('#csv-qty').addEventListener('change', clampQty);
+  // CSV: lista vazia = a caixa do painel; senão, as caixas da lista com quantidade, um arquivo por espessura
   $('#dl-csv').onclick = () => {
-    if (!canDownload()) return;
-    const qty = clampQty();
-    download(baseName() + '_cutlist.csv', G.toCSV(last.res, cfg, qty), 'text/csv');
+    if (!cfg.cutList.length) {
+      if (!canDownload()) return;
+      download(planBaseName() + '_cutlist.csv', G.toCSV(last.res, cfg, 1), 'text/csv');
+      return;
+    }
+    const entries = planEntries().filter(e => e.res);
+    if (!entries.length) { toast('Nenhuma caixa da lista com quantidade e sem erro.'); return; }
+    const byT = new Map();
+    for (const e of entries) { const t = +e.box.t; if (!byT.has(t)) byT.set(t, []); byT.get(t).push(e); }
+    [...byT.entries()].forEach(([t, list], k) => {
+      const jobs = list.map(e => ({ res: e.res, qty: e.qty, name: e.name, pieceGrain: e.box.pieceGrain, t: e.box.t, kerf: e.box.kerf }));
+      const name = planBaseName() + (byT.size > 1 ? `_${t}mm` : '') + '_cutlist.csv';
+      setTimeout(() => download(name, G.toCSV({ jobs }, cfg, `Lista de corte ${t} mm`), 'text/csv'), k * 400);
+    });
   };
-  $('#save-json').onclick = () => download(baseName() + '.json', JSON.stringify(cfg, null, 2), 'application/json');
+  $('#save-json').onclick = () => download((cfg.cutList.length > 1 ? planBaseName() : baseName()) + '.json', JSON.stringify(cfg, null, 2), 'application/json');
   $('#load-json').onclick = () => $('#file-json').click();
   $('#file-json').onchange = (ev) => {
     const file = ev.target.files[0];
@@ -916,11 +1430,20 @@
     ev.target.value = '';
   };
   function resetAll() {
-    if (!confirm('Restaurar TODOS os valores padrão? Os valores atuais serão perdidos.')) return;
+    if (!confirm('Restaurar TODOS os valores padrão? Os valores atuais e a lista de corte serão perdidos.')) return;
     try { localStorage.removeItem(STORE); } catch (e) { /* ignora */ }
-    cfg = normalize(null); bindStatic(); renderFaces(); showTab(cfg.tab); update();
+    cfg = normalize(null); bindStatic(); renderFaces(); $('#cut-drawer').hidden = true; showTab(cfg.tab); update();
   }
-  $('#reset').onclick = resetAll;
+  // só a caixa do painel volta aos padrões; lista de corte, chapa, otimização, zoom e 3D ficam
+  function resetBox() {
+    if (!confirm('Restaurar a caixa do painel aos valores padrão? A lista de corte e as opções da chapa não mudam.')) return;
+    const def = boxOf(normalize(null));
+    for (const k of Object.keys(boxOf(cfg))) if (!(k in def)) delete cfg[k];
+    Object.assign(cfg, def);
+    cfg.editing = null; // o painel deixa de ser a caixa da lista que estava sendo editada
+    bindStatic(); renderFaces(); update();
+  }
+  $('#reset').onclick = resetBox;
   $('#reset2').onclick = resetAll;
 
   // A roda do mouse sobre um campo numérico focado altera o valor e trava a rolagem da página.
@@ -935,6 +1458,8 @@
   bindDivs();
   renderFaces();
   initHelp();
+  initZoom();
+  initList();
   showTab(cfg.tab);
   render();
 })();

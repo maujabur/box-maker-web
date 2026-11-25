@@ -402,251 +402,110 @@
     return { x0, y0, x1, y1 };
   }
 
-  /*
-   * Organização das peças em chapas (retângulos envolventes, com rotação de 90° quando o veio permite).
-   * Chapa a chapa: procura o arranjo das peças que sobraram (MaxRects) e fica com o melhor; o que não
-   * coube segue para a próxima chapa. "Melhor", nesta ordem:
-   *   1. maior área de peças na chapa (menos chapas no total);
-   *   2. maior retângulo livre que sobra (sobra contínua, aproveitável);
-   *   3. arranjo mais compacto (menor retângulo que envolve as peças).
-   * Até 6 peças testa todas as ordens e rotações; acima disso usa ordens heurísticas e uma busca local
-   * com sorteio de semente fixa (o mesmo projeto gera sempre o mesmo plano).
-   */
-
-  // rots[k]: 0 = como está, 1 = gira 90°, 2 = livre (escolhe a orientação que encaixa melhor)
-  function packOne(pieces, order, rots, aw, ah, gap, dedupe) {
-    let free = [{ x: 0, y: 0, w: aw, h: ah }];
-    const placed = [];
-    // menor medida entre as peças: quando nenhum espaço livre comporta, a chapa está cheia
-    let minSide = Infinity;
-    for (const i of order) minSide = Math.min(minSide, pieces[i].w + gap, pieces[i].h + gap);
-    let failed = dedupe ? new Set() : null; // tamanhos que já não couberam no estado atual (peças repetidas)
-    for (let k = 0; k < order.length; k++) {
-      const pc = pieces[order[k]];
-      const rs = rots[k];
-      const key = failed && pc.w + 'x' + pc.h + 'r' + rs;
-      if (failed && failed.has(key)) continue;
-      let best = null, bs = Infinity, brot = 0;
-      for (const r of (rs === 2 ? [0, 1] : [rs])) {
-        const w = (r ? pc.h : pc.w) + gap, h = (r ? pc.w : pc.h) + gap;
-        for (const f of free) {
-          if (w <= f.w + 1e-9 && h <= f.h + 1e-9) {
-            const sc = Math.min(f.w - w, f.h - h);
-            if (sc < bs) { bs = sc; best = f; brot = r; }
-          }
-        }
-      }
-      if (!best) { if (failed) failed.add(key); continue; } // esta peça não coube; tenta as seguintes
-      const w = (brot ? pc.h : pc.w) + gap, h = (brot ? pc.w : pc.h) + gap;
-      const u = { x: best.x, y: best.y, w, h };
-      placed.push({ pc, x: u.x, y: u.y, rot: brot, w, h });
-      if (failed) failed = new Set();
-      const nf = [];
-      for (const f of free) {
-        if (u.x >= f.x + f.w || u.x + u.w <= f.x || u.y >= f.y + f.h || u.y + u.h <= f.y) { nf.push(f); continue; }
-        if (u.x > f.x) nf.push({ x: f.x, y: f.y, w: u.x - f.x, h: f.h });
-        if (u.x + u.w < f.x + f.w) nf.push({ x: u.x + u.w, y: f.y, w: f.x + f.w - u.x - u.w, h: f.h });
-        if (u.y > f.y) nf.push({ x: f.x, y: f.y, w: f.w, h: u.y - f.y });
-        if (u.y + u.h < f.y + f.h) nf.push({ x: f.x, y: u.y + u.h, w: f.w, h: f.y + f.h - u.y - u.h });
-      }
-      free = nf.filter((r, i) => !nf.some((q, j) => j !== i && r.x >= q.x && r.y >= q.y &&
-        r.x + r.w <= q.x + q.w && r.y + r.h <= q.y + q.h && (j < i || !(r.x === q.x && r.y === q.y && r.w === q.w && r.h === q.h))));
-      if (!free.some(f => Math.max(f.w, f.h) >= minSide - 1e-9 && Math.min(f.w, f.h) >= minSide - 1e-9)) break;
-    }
-    return { placed, free };
-  }
-
-  // nota de um arranjo, comparada em ordem (ver comentário acima); números inteiros para empatar de verdade
-  // tie = 'free': desempata pela maior sobra contínua; 'compact': pelo arranjo mais compacto
-  function sheetScore(r, gap, tie) {
-    let area = 0, mx = 0, my = 0, big = 0;
-    for (const q of r.placed) { area += (q.w - gap) * (q.h - gap); mx = Math.max(mx, q.x + q.w); my = Math.max(my, q.y + q.h); }
-    for (const f of r.free) big = Math.max(big, f.w * f.h);
-    const a = Math.round(area), b = Math.round(big), c = -Math.round(mx * my);
-    return tie === 'free' ? [a, b, c] : [a, c, b];
-  }
-  function better(a, b) {
-    if (!b) return true;
-    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i];
-    return false;
-  }
-
-  function permutations(a) {
-    if (a.length <= 1) return [a];
-    const out = [];
-    a.forEach((x, i) => permutations(a.filter((_, j) => j !== i)).forEach(p => out.push([x, ...p])));
-    return out;
-  }
-
-  // gerador pseudoaleatório com semente (resultados reproduzíveis)
-  function rng(seed) {
-    let a = seed >>> 0;
-    return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-  }
-
-  // fixedRot[i]: -1 = livre (0° ou 90°), 0 = não gira, 1 = gira 90° (por causa do veio)
-  function bestSheet(pieces, aw, ah, gap, fixedRot, tie) {
-    const n = pieces.length;
-    let best = null, bestS = null;
-    const tryIt = (order, rots) => {
-      const r = packOne(pieces, order, rots, aw, ah, gap, n > 6);
-      if (!r.placed.length) return null;
-      const s = sheetScore(r, gap, tie);
-      if (better(s, bestS)) { bestS = s; best = r.placed; }
-      return s;
-    };
-    if (n <= 6) {
-      for (const order of permutations([...Array(n).keys()])) {
-        const base = order.map(i => (fixedRot[i] === 1 ? 1 : 0));
-        const freePos = [];
-        order.forEach((i, k) => { if (fixedRot[i] === -1) freePos.push(k); });
-        for (let sub = 0; sub < (1 << freePos.length); sub++) {
-          const rots = base.slice();
-          freePos.forEach((k, j) => { if ((sub >> j) & 1) rots[k] = 1; });
-          tryIt(order, rots);
-        }
-      }
-      return best || [];
-    }
-    // muitas peças: ordens heurísticas, com rotação livre escolhida peça a peça
-    const rotOf = i => (fixedRot[i] === -1 ? 2 : fixedRot[i]);
-    const idx = [...Array(n).keys()];
-    const simple = tie === 'simple';
-    const keys = simple ? [p => p.w * p.h] : [
-      p => p.w * p.h, p => Math.max(p.w, p.h), p => p.w, p => p.h, p => p.w + p.h, p => Math.min(p.w, p.h),
-    ];
-    let cur = null, curS = null;
-    for (const kf of keys) {
-      const order = idx.slice().sort((i, j) => kf(pieces[j]) - kf(pieces[i]) || i - j);
-      const s = tryIt(order, order.map(rotOf));
-      if (s && better(s, curS)) { cur = order; curS = s; }
-      // também testa todas as rotações das primeiras peças livres (as demais escolhem sozinhas)
-      const freePos = [];
-      const maxBits = n > 60 ? 4 : 8; // com muitas peças, menos combinações (o tempo cresce com n)
-      order.forEach((i, k) => { if (fixedRot[i] === -1 && freePos.length < maxBits) freePos.push(k); });
-      for (let sub = 0; sub < (1 << freePos.length); sub++) {
-        const rots = order.map(rotOf);
-        freePos.forEach((k, j) => { rots[k] = (sub >> j) & 1; });
-        tryIt(order, rots);
-      }
-    }
-    // busca local: troca duas peças de lugar na ordem e fica com o resultado se não piorar
-    const iters = simple || n > 200 ? 0 : Math.min(1500, Math.floor(30000 / n));
-    const rand = rng(n * 7919 + Math.round(aw) * 31 + Math.round(ah));
-    for (let it = 0; cur && it < iters; it++) {
-      const o = cur.slice();
-      const a = Math.floor(rand() * n), b = Math.floor(rand() * n);
-      if (a === b) continue;
-      [o[a], o[b]] = [o[b], o[a]];
-      const s = tryIt(o, o.map(rotOf));
-      if (s && !better(curS, s)) { cur = o; curS = s; }
-    }
-    return best || [];
-  }
-
   const rot90 = p => [-p[1], p[0]];
 
-  // ---------- várias chapas ao mesmo tempo ----------
-  // Encaixe de uma peça no melhor espaço livre de uma chapa (menor sobra no lado mais curto).
-  function fitIn(free, pc, rs, gap) {
-    let best = null, bs = Infinity;
-    for (const r of (rs === 2 ? [0, 1] : [rs])) {
-      const w = (r ? pc.h : pc.w) + gap, h = (r ? pc.w : pc.h) + gap;
-      for (const f of free) {
-        if (w <= f.w + 1e-9 && h <= f.h + 1e-9) {
-          const sc = Math.min(f.w - w, f.h - h);
-          if (sc < bs) { bs = sc; best = { x: f.x, y: f.y, w, h, rot: r }; }
-        }
-      }
-    }
-    return best;
-  }
-  function splitFree(free, u) {
-    const nf = [];
-    for (const f of free) {
-      if (u.x >= f.x + f.w || u.x + u.w <= f.x || u.y >= f.y + f.h || u.y + u.h <= f.y) { nf.push(f); continue; }
-      if (u.x > f.x) nf.push({ x: f.x, y: f.y, w: u.x - f.x, h: f.h });
-      if (u.x + u.w < f.x + f.w) nf.push({ x: u.x + u.w, y: f.y, w: f.x + f.w - u.x - u.w, h: f.h });
-      if (u.y > f.y) nf.push({ x: f.x, y: f.y, w: f.w, h: u.y - f.y });
-      if (u.y + u.h < f.y + f.h) nf.push({ x: f.x, y: u.y + u.h, w: f.w, h: f.y + f.h - u.y - u.h });
-    }
-    return nf.filter((r, i) => !nf.some((q, j) => j !== i && r.x >= q.x && r.y >= q.y &&
-      r.x + r.w <= q.x + q.w && r.y + r.h <= q.y + q.h && (j < i || !(r.x === q.x && r.y === q.y && r.w === q.w && r.h === q.h))));
-  }
-  // Coloca as peças na ordem dada, cada uma na primeira chapa onde couber (abre outra se preciso).
-  // Diferente do método chapa a chapa, uma chapa não "gasta" as peças pequenas que as outras precisam.
-  function packMulti(pieces, order, rots, aw, ah, gap) {
-    const bins = [];
-    for (let k = 0; k < order.length; k++) {
-      const pc = pieces[order[k]];
-      let done = false;
-      for (const bin of bins) {
-        const u = fitIn(bin.free, pc, rots[k], gap);
-        if (u) { bin.placed.push(Object.assign({ pc }, u)); bin.free = splitFree(bin.free, u); bin.area += pc.w * pc.h; done = true; break; }
-      }
-      if (done) continue;
-      const bin = { free: [{ x: 0, y: 0, w: aw, h: ah }], placed: [], area: 0 };
-      const u = fitIn(bin.free, pc, rots[k], gap);
-      if (!u) return null; // não deveria acontecer: peças maiores que a chapa são tiradas antes
-      bin.placed.push(Object.assign({ pc }, u)); bin.free = splitFree(bin.free, u); bin.area += pc.w * pc.h;
-      bins.push(bin);
-    }
-    return bins;
-  }
-  // menos chapas; empate: a última chapa mais vazia (as outras mais cheias)
-  const multiScore = bins => [-bins.length, -Math.round(bins[bins.length - 1].area)];
-
   /*
-   * Plano de corte, em etapas, para a interface poder mostrar o andamento.
-   * cfg.qty: número de caixas (peças repetidas no mesmo plano).
-   * Cada etapa devolve { pieces: total, placed: andamento, pass, passes }; o final é o plano.
+   * Plano de corte. A otimização fica nos módulos packing/*.js (motor, estratégias, busca); aqui só se
+   * prepara o problema (peças com as cópias, chapa, veio) e se monta o plano final (contornos posicionados).
    *
-   * Dois métodos, e fica o de menos chapas:
-   *   - chapa a chapa (variantes free, compact, simple): cada chapa recebe o melhor arranjo das peças
-   *     que sobraram; bom para a sobra de cada chapa, mas pode gastar cedo as peças pequenas;
-   *   - várias chapas ao mesmo tempo (multi): ordens de peças testadas como um todo; depois cada chapa
-   *     é rearranjada pelo critério de sobra contínua, se as mesmas peças couberem.
-   * Empate no número de chapas: vale o primeiro da lista (chapa a chapa, sobra contínua).
+   * Entrada: `res` (resultado de build(), com cfg.qty cópias e cfg.pieceGrain) ou { jobs: [...] }, uma lista
+   *   de caixas: { res, qty, name, pieceGrain }. Todas as caixas de uma chamada vão para as mesmas chapas
+   *   (mesma espessura: separar por espessura é responsabilidade de quem chama).
+   * planSetup(entrada, cfg) -> { problem, liteProblem, opts, materialize(solução, info) }
+   *   problem      itens com referência às peças (cálculo na própria página);
+   *   liteProblem  só números (para enviar ao Web Worker);
+   *   materialize  aceita solução completa ou leve ({ id, x, y... }), confere de novo a validade e monta o plano.
+   * layoutSteps(res, cfg): gerador; cada etapa traz o andamento (pass, passes, strategy, evals...).
+   * cfg.optMode: 'fast' | 'balanced' (padrão) | 'intensive'; cfg.optTime: limite do intensivo, s.
    */
-  function* layoutSteps(res, cfg) {
+  function planSetup(res, cfg) {
     const ctx = planContext(res, cfg);
-    const plans = [];
-    const variants = ['free', 'compact', 'simple', 'multi'];
-    // com até 6 peças a busca chapa a chapa já é completa
-    if (ctx.pieces.length <= 6) variants.splice(2, 2);
-    for (let v = 0; v < variants.length; v++) {
-      const it = variants[v] === 'multi' ? multiSteps(ctx) : planSteps(ctx, variants[v]);
-      let r = it.next();
-      while (!r.done) { yield Object.assign({}, r.value, { pass: v + 1, passes: variants.length }); r = it.next(); }
-      plans.push(r.value);
-    }
-    let best = plans[0];
-    for (const p of plans) if (p.sheets.length < best.sheets.length) best = p;
-    return best;
+    const BP = packing();
+    const opts = { mode: BP.plan.MODES.includes(cfg.optMode) || cfg.optMode === 'legacy' ? cfg.optMode : 'balanced', timeLimit: +cfg.optTime || BP.plan.DEFAULT_TIME };
+    if (cfg.optSeed != null) opts.seed = cfg.optSeed;
+    if (cfg.optEvals) opts.maxEvals = cfg.optEvals;
+    const liteProblem = Object.assign({}, ctx.problem, { items: BP.plan.liteItems(ctx.problem.items) });
+    const materialize = (solution, info) => {
+      let sol = solution || null;
+      if (sol && sol.sheets.some(sh => sh.rects.some(q => q.item == null))) sol = BP.plan.fromLite(sol, ctx.problem.items);
+      if (!sol) throw new Error('Nenhuma solução válida no plano de corte.');
+      const errs = BP.engine.validate(sol, ctx.problem);
+      if (errs.length) throw new Error('Plano de corte inválido: ' + errs[0]);
+      const metrics = BP.ranking.evaluate(sol, ctx.problem);
+      return ctx.materialize({ solution: sol, metrics, strategy: (info && info.strategy) || sol.name || '' }, info);
+    };
+    return { problem: ctx.problem, liteProblem, opts, materialize };
   }
+
+  function* layoutSteps(res, cfg) {
+    const setup = planSetup(res, cfg);
+    const out = yield* packing().plan.steps(setup.problem, setup.opts);
+    if (!out.best) throw new Error('Nenhuma solução válida no plano de corte' + (out.rejected.length ? ': ' + out.rejected[0].errors[0] : '.'));
+    return setup.materialize(out.best.solution, { strategy: out.best.strategy, candidates: out.report.length, mode: out.mode, stopped: out.stopped });
+  }
+
+  // módulos do motor (packing/*.js): globais no navegador, require no Node
+  function packing() {
+    let ns = root.BoxPack;
+    if (!(ns && ns.plan) && typeof require === 'function') {
+      for (const m of ['rects', 'ranking', 'engine', 'strategies', 'refine', 'legacy', 'exact', 'search', 'plan']) require('./packing/' + m + '.js');
+      ns = root.BoxPack;
+    }
+    if (!(ns && ns.plan)) throw new Error('Motor de empacotamento (packing/*.js) não carregado.');
+    return ns;
+  }
+
+  // Assinatura da geometria de uma peça (contorno e furos, arredondados a 0,01 mm): peças com a mesma
+  // assinatura e a mesma restrição de orientação são intercambiáveis.
+  function shapeSig(p) {
+    const f = v => Math.round(v * 100);
+    return p.poly.map(q => f(q[0]) + ',' + f(q[1])).join(';') + '|' +
+      (p.holes || []).map(h => [h.cx, h.cy, h.len, h.wid, h.ang].map(f).join(',')).join(';');
+  }
+
+  // lista de caixas da entrada (ver planSetup)
+  function jobsOf(input, cfg) {
+    if (input && Array.isArray(input.jobs)) {
+      return input.jobs.map(j => ({ res: j.res, qty: Math.min(999, Math.max(0, Math.round(+j.qty || 0))), name: j.name || '', pieceGrain: j.pieceGrain || {} }))
+        .filter(j => j.qty > 0);
+    }
+    return [{ res: input, qty: Math.min(999, Math.max(1, Math.round(+cfg.qty || 1))), name: '', pieceGrain: cfg.pieceGrain || {} }];
+  }
+  const slug = t => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'caixa';
 
   // dados comuns aos métodos: peças (com as cópias), chapa, veio, montagem dos itens finais
-  function planContext(res, cfg) {
+  function planContext(input, cfg) {
     const SW = Math.max(50, +cfg.sheetW || 1000), SH = Math.max(50, +cfg.sheetH || 800);
     const gap = Math.max(0, +cfg.gap || 0), margin = Math.max(0, +cfg.margin || 0);
     const grain = cfg.grain === 'h' || cfg.grain === 'v' ? cfg.grain : 'none';
-    const qty = Math.min(999, Math.max(1, Math.round(+cfg.qty || 1)));
+    const jobs = jobsOf(input, cfg);
+    const qty = jobs.reduce((a, j) => a + j.qty, 0);
+    const named = jobs.length > 1; // várias caixas diferentes: o rótulo leva o nome da caixa
     const aw = SW - 2 * margin + gap, ah = SH - 2 * margin + gap;
-    // veio: o eixo de veio da peça (u = x local, v = y local) deve ficar paralelo ao veio da chapa
-    const pg = cfg.pieceGrain || {};
-    const grainOf = p => (pg[p.name] === 'u' || pg[p.name] === 'v' ? pg[p.name] : 'none');
-    const pieces = [];
-    for (let c = 1; c <= qty; c++) {
-      for (const p of res.panels) {
-        const b = bbox(p.poly);
-        const g = grainOf(p);
-        let fixed = -1;
-        if (grain !== 'none' && g !== 'none') fixed = grain === 'h' ? (g === 'u' ? 0 : 1) : (g === 'u' ? 1 : 0);
-        pieces.push({ p, box: qty > 1 ? c : 0, w: b.x1 - b.x0, h: b.y1 - b.y0, g, fixed });
+    const everyPiece = [];
+    const sigs = new Map(); // assinatura calculada uma vez por painel (as cópias dividem o resultado)
+    jobs.forEach((job, ji) => {
+      // veio: o eixo de veio da peça (u = x local, v = y local) deve ficar paralelo ao veio da chapa
+      const pg = job.pieceGrain;
+      const grainOf = p => (pg[p.name] === 'u' || pg[p.name] === 'v' ? pg[p.name] : 'none');
+      for (let c = 1; c <= job.qty; c++) {
+        const copy = job.qty > 1 ? c : 0;
+        for (const p of job.res.panels) {
+          const b = bbox(p.poly);
+          const g = grainOf(p);
+          let fixed = -1;
+          if (grain !== 'none' && g !== 'none') fixed = grain === 'h' ? (g === 'u' ? 0 : 1) : (g === 'u' ? 1 : 0);
+          if (!sigs.has(p)) sigs.set(p, shapeSig(p));
+          const label = named ? `${job.name}${copy ? ' #' + copy : ''} · ${p.label}` : p.label + (copy ? ' ' + copy : '');
+          const name = (named ? slug(job.name) + '_' : '') + p.name + (copy ? '_' + copy : '');
+          // pc é também o item do motor: { id, w, h, fixed, shape } + dados para montar a peça final
+          everyPiece.push({ id: everyPiece.length, p, job: ji, box: copy, label, name, w: b.x1 - b.x0, h: b.y1 - b.y0, g, fixed, shape: sigs.get(p) + '#' + fixed });
+        }
       }
-    }
+    });
     // peça que não cabe numa chapa vazia (em nenhuma orientação permitida)
-    const fitsEmpty = pc => !!fitIn([{ x: 0, y: 0, w: aw, h: ah }], pc, pc.fixed === -1 ? 2 : pc.fixed, gap);
+    const fitsEmpty = pc => (pc.fixed === -1 ? [0, 1] : [pc.fixed]).some(r => (r ? pc.h : pc.w) + gap <= aw + 1e-9 && (r ? pc.w : pc.h) + gap <= ah + 1e-9);
+    const pieces = everyPiece.filter(fitsEmpty), tooBig = everyPiece.filter(pc => !fitsEmpty(pc));
     const mkItem = (pc, rot, ox, oy) => {
       let poly = pc.p.poly.map(q => [q[0], q[1]]);
       let holes = pc.p.holes.map(h => Object.assign({}, h));
@@ -657,7 +516,7 @@
       const b = bbox(poly);
       const dx = ox - b.x0, dy = oy - b.y0;
       return {
-        name: pc.p.name + (pc.box ? '_' + pc.box : ''), label: pc.p.label + (pc.box ? ' ' + pc.box : ''), box: pc.box,
+        name: pc.name, label: pc.label, box: pc.box, job: pc.job,
         rotated: !!rot, grained: grain !== 'none' && pc.g !== 'none',
         poly: poly.map(q => [q[0] + dx, q[1] + dy]),
         holes: holes.map(h => Object.assign(h, { cx: h.cx + dx, cy: h.cy + dy })),
@@ -666,92 +525,41 @@
     };
     // chapa ampliada para uma peça maior que a chapa, com aviso (um por tipo de peça)
     const oversize = (pc, warnings) => {
-      if (!warnings.some(w => w.piece === pc.p.name)) {
-        warnings.push({ level: 'warn', piece: pc.p.name, text: `${pc.p.label} (${pc.w.toFixed(0)} × ${pc.h.toFixed(0)} mm) não cabe na chapa de ${SW} × ${SH} mm (com margem de ${margin} mm).`, keys: ['sheetW', 'sheetH', 'margin'] });
+      const key = pc.job + ':' + pc.p.name;
+      if (!warnings.some(w => w.piece === key)) {
+        warnings.push({ level: 'warn', piece: key, text: `${named ? jobs[pc.job].name + ' · ' : ''}${pc.p.label} (${pc.w.toFixed(0)} × ${pc.h.toFixed(0)} mm) não cabe na chapa de ${SW} × ${SH} mm (com margem de ${margin} mm).`, keys: ['sheetW', 'sheetH', 'margin'] });
       }
-      return { items: [mkItem(pc, pc.fixed === 1 ? 1 : 0, margin, margin)], width: Math.max(SW, pc.w + 2 * margin), height: Math.max(SH, pc.h + 2 * margin), oversize: true, grain };
+      return { items: [mkItem(pc, pc.fixed === 1 ? 1 : 0, margin, margin)], width: Math.max(SW, pc.w + 2 * margin), height: Math.max(SH, pc.h + 2 * margin), oversize: true, grain, usage: (pc.w * pc.h) / (Math.max(SW, pc.w + 2 * margin) * Math.max(SH, pc.h + 2 * margin)), leftover: null };
     };
-    const sheetOf = placed => ({ items: placed.map(q => mkItem(q.pc, q.rot, margin + q.x, margin + q.y)), width: SW, height: SH, grain });
-    const finish = (sheets, warnings) => {
-      sheets.forEach(sh => {
-        const area = sh.items.reduce((a, it) => { const b = bbox(it.poly); return a + (b.x1 - b.x0) * (b.y1 - b.y0); }, 0);
-        sh.usage = area / (sh.width * sh.height);
+    // menor lado de uma sobra aproveitável (mm): entra na classificação e na lista de sobras de cada chapa
+    const minUseful = cfg.minLeftover != null && isFinite(+cfg.minLeftover) ? Math.max(0, +cfg.minLeftover) : 50;
+    const problem = { items: pieces, width: SW - 2 * margin, height: SH - 2 * margin, gap, minUseful };
+
+    // Solução escolhida -> plano final (peças com contornos posicionados, uso e sobras de cada chapa).
+    // Chapas mais cheias primeiro; a ampliada para peça grande vai ao fim.
+    const materialize = (best, out) => {
+      const warnings = [];
+      const per = best.metrics.get('perSheet');
+      const usable = problem.width * problem.height;
+      const sheets = best.solution.sheets.map((sh, i) => {
+        const items = sh.rects.map(q => mkItem(q.item, q.rot, margin + q.x, margin + q.y));
+        const off = r => (r ? { x: r.x + margin, y: r.y + margin, w: r.w, h: r.h } : null);
+        return {
+          items, width: SW, height: SH, grain, usage: per[i].used / (SW * SH), usageUsable: per[i].used / usable,
+          leftover: { big: off(per[i].big), useful: per[i].useful.map(off) },
+        };
       });
-      return { sheets, warnings, qty };
+      sheets.sort((a, b) => b.usage - a.usage);
+      for (const pc of tooBig) sheets.push(oversize(pc, warnings));
+      const used = per.reduce((a, s) => a + s.used, 0);
+      const big = sheets.reduce((m, sh, i) => (sh.leftover && sh.leftover.big && (!m || sh.leftover.big.w * sh.leftover.big.h > m.w * m.h) ? Object.assign({ sheet: i }, sh.leftover.big) : m), null);
+      const stats = {
+        strategy: best.strategy, candidates: out ? out.candidates : 0, mode: out && out.mode, stopped: !!(out && out.stopped), sheets: sheets.length,
+        usage: per.length ? used / (per.length * SW * SH) : 0, big, usefulArea: best.metrics.get('usefulArea'), usefulCount: best.metrics.get('usefulCount'),
+      };
+      return { sheets, warnings, qty, stats };
     };
-    return { SW, SH, gap, margin, grain, qty, aw, ah, pieces, fitsEmpty, oversize, sheetOf, finish };
-  }
-
-  // método chapa a chapa
-  function* planSteps(ctx, tie) {
-    const { aw, ah, gap } = ctx;
-    const warnings = [];
-    let remaining = ctx.pieces.slice();
-    const total = remaining.length;
-    const sheets = [];
-    while (remaining.length) {
-      const placed = bestSheet(remaining, aw, ah, gap, remaining.map(pc => pc.fixed), tie);
-      if (!placed.length) {
-        // nenhuma peça restante cabe: a primeira vai sozinha, em uma chapa ampliada, com aviso
-        sheets.push(ctx.oversize(remaining.shift(), warnings));
-      } else {
-        sheets.push(ctx.sheetOf(placed));
-        const used = new Set(placed.map(q => q.pc));
-        remaining = remaining.filter(pc => !used.has(pc));
-      }
-      if (remaining.length) yield { pieces: total, placed: total - remaining.length };
-    }
-    return ctx.finish(sheets, warnings);
-  }
-
-  // método várias chapas ao mesmo tempo
-  function* multiSteps(ctx) {
-    const { aw, ah, gap } = ctx;
-    const warnings = [];
-    const sheets = [];
-    const pieces = [];
-    for (const pc of ctx.pieces) { if (ctx.fitsEmpty(pc)) pieces.push(pc); else sheets.push(ctx.oversize(pc, warnings)); }
-    const n = pieces.length;
-    if (!n) return ctx.finish(sheets, warnings);
-    const rotOf = i => (pieces[i].fixed === -1 ? 2 : pieces[i].fixed);
-    const idx = [...Array(n).keys()];
-    const keys = [p => p.w * p.h, p => p.w, p => p.h, p => Math.max(p.w, p.h), p => p.w + p.h];
-    let best = null, bestS = null, cur = null, curS = null;
-    const tryIt = order => {
-      const bins = packMulti(pieces, order, order.map(rotOf), aw, ah, gap);
-      if (!bins) return null;
-      const s = multiScore(bins);
-      if (better(s, bestS)) { best = bins; bestS = s; }
-      return s;
-    };
-    for (const kf of keys) {
-      const order = idx.slice().sort((i, j) => kf(pieces[j]) - kf(pieces[i]) || i - j);
-      const s = tryIt(order);
-      if (s && better(s, curS)) { cur = order; curS = s; }
-    }
-    // busca local na ordem: troca duas peças; aceita se não piorar (anda por planos equivalentes)
-    const iters = n > 300 ? 0 : Math.min(4000, Math.floor(120000 / n));
-    const rand = rng(n * 104729 + Math.round(aw) * 17 + Math.round(ah));
-    for (let it = 0; cur && it < iters; it++) {
-      const o = cur.slice();
-      const a = Math.floor(rand() * n), b = Math.floor(rand() * n);
-      if (a === b) continue;
-      [o[a], o[b]] = [o[b], o[a]];
-      const s = tryIt(o);
-      if (s && !better(curS, s)) { cur = o; curS = s; }
-      if (it % 200 === 199) yield { pieces: n, placed: Math.round((n * (it + 1)) / iters) };
-    }
-    // cada chapa: rearranja as mesmas peças pelo critério de sobra contínua (se todas couberem)
-    for (const bin of best) {
-      const ps = bin.placed.map(q => q.pc);
-      let placed = bin.placed;
-      if (ps.length <= 12) {
-        const alt = bestSheet(ps, aw, ah, gap, ps.map(pc => pc.fixed), 'free');
-        if (alt.length === ps.length) placed = alt;
-      }
-      sheets.push(ctx.sheetOf(placed));
-    }
-    return ctx.finish(sheets, warnings);
+    return { SW, SH, gap, margin, grain, qty, aw, ah, pieces, problem, materialize };
   }
 
   // Plano de corte completo, de uma vez (sem etapas). Os avisos do plano vão para res.warnings.
@@ -834,6 +642,25 @@
         s += `<text x="${f(it.cx)}" y="${f(lay.height - it.cy)}" font-family="sans-serif" font-size="${f(fs)}" text-anchor="middle" fill="#555">${it.label}</text>\n`;
         s += `<text x="${f(it.cx)}" y="${f(lay.height - it.cy + fs * 1.2)}" font-family="sans-serif" font-size="${f(fs * 0.75)}" text-anchor="middle" fill="#888">${f(it.w)} × ${f(it.h)}</text>\n`;
       }
+      // sobras úteis (só na visualização; nunca nos arquivos de corte): retângulos livres sem sobreposição,
+      // com os dois lados >= 50 mm, do maior para o menor. O maior fica mais forte; os demais, mais claros.
+      const lo = o.leftover && lay.leftover;
+      const rects = lo ? (lo.useful && lo.useful.length ? lo.useful : lo.big ? [lo.big] : []) : [];
+      rects.forEach((r, k) => {
+        if (!(r.w > 1 && r.h > 1)) return;
+        const y = lay.height - r.y - r.h;
+        const main = k === 0;
+        s += `<rect x="${f(r.x)}" y="${f(y)}" width="${f(r.w)}" height="${f(r.h)}" fill="rgba(47,111,220,${main ? '.12' : '.06'})" stroke="#2f6fdc" stroke-opacity="${main ? 1 : 0.6}" stroke-width="${main ? 1.5 : 1}" stroke-dasharray="${main ? '8 5' : '4 4'}" vector-effect="non-scaling-stroke"/>\n`;
+        const label = `${main ? 'Maior sobra ' : ''}${f(Math.round(r.w))} × ${f(Math.round(r.h))}`;
+        // texto na horizontal ou, em faixa vertical estreita, girado; sem caber, fica sem rótulo
+        const vertical = r.h > r.w * 1.5;
+        const along = vertical ? r.h : r.w, across = vertical ? r.w : r.h;
+        const ls = Math.min(fs * (main ? 0.9 : 0.75), across * 0.6, (along * 0.9) / (label.length * 0.55));
+        if (ls < 5) return;
+        const cx = r.x + r.w / 2, cy = y + r.h / 2;
+        const rot = vertical ? ` transform="rotate(-90 ${f(cx)} ${f(cy)})"` : '';
+        s += `<text x="${f(cx)}" y="${f(cy + ls / 3)}"${rot} font-family="sans-serif" font-size="${f(ls)}" text-anchor="middle" fill="#2f6fdc" fill-opacity="${main ? 1 : 0.8}">${label}</text>\n`;
+      });
     } else {
       // preenchimento claro só para facilitar a visualização (não é parte do corte)
       s += `<g transform="matrix(1 0 0 -1 0 ${H})" fill="#f6ead0" fill-rule="evenodd" stroke="#ff0000" stroke-width="0.1">\n`;
@@ -897,22 +724,30 @@
       return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
     }).join(',') + '\r\n';
   }
-  function toCSV(res, cfg, qty) {
-    const n = Math.max(1, Math.round(+qty || 1));
+  // toCSV(res, cfg, qty) para uma caixa, ou toCSV({ jobs: [{ res, qty, name, pieceGrain, t, kerf }] }, cfg, título)
+  // para uma lista (mesma espessura). Cada caixa vira um grupo; a quantidade é a de cada caixa.
+  function toCSV(input, cfg, qtyOrTitle) {
+    const multi = input && Array.isArray(input.jobs);
+    const jobs = multi ? input.jobs.filter(j => j.qty > 0)
+      : [{ res: input, qty: Math.max(1, Math.round(+qtyOrTitle || 1)), name: '', pieceGrain: cfg.pieceGrain || {}, t: cfg.t, kerf: cfg.kerf }];
     const grain = cfg.grain === 'h' || cfg.grain === 'v' ? cfg.grain : '';
-    const pg = cfg.pieceGrain || {};
+    const t = jobs.length ? jobs[0].t : cfg.t;
+    const kerf = jobs.length ? jobs[0].kerf : cfg.kerf;
     let s = '';
     s += csvRow(['@', 'Key', 'Valores']);
-    s += csvRow(['N', `Caixa ${cfg.W}x${cfg.D}x${cfg.H}mm`]);
-    s += csvRow(['M', `MDF ${cfg.t}mm`]);
-    s += csvRow(['K', +cfg.kerf || 0]);
+    s += csvRow(['N', multi ? (qtyOrTitle || 'Caixas') : `Caixa ${cfg.W}x${cfg.D}x${cfg.H}mm`]);
+    s += csvRow(['M', `MDF ${t}mm`]);
+    s += csvRow(['K', +kerf || 0]);
     s += csvRow(['S', +cfg.sheetW || 1000, +cfg.sheetH || 800, '', grain, '', '', '']);
     s += csvRow(['@', 'Comprimento', 'Largura', 'Qtde', 'Veio', 'Rótulo', 'Grupo']);
-    for (const p of res.panels) {
-      const b = bbox(p.poly);
-      const w = b.x1 - b.x0, h = b.y1 - b.y0;
-      const g = pg[p.name] === 'u' ? 'h' : pg[p.name] === 'v' ? 'v' : '';
-      s += csvRow(['P', w.toFixed(2), h.toFixed(2), n, g, p.label, p.name]);
+    for (const job of jobs) {
+      const pg = job.pieceGrain || {};
+      for (const p of job.res.panels) {
+        const b = bbox(p.poly);
+        const w = b.x1 - b.x0, h = b.y1 - b.y0;
+        const g = pg[p.name] === 'u' ? 'h' : pg[p.name] === 'v' ? 'v' : '';
+        s += csvRow(['P', w.toFixed(2), h.toFixed(2), job.qty, g, (multi ? job.name + ' · ' : '') + p.label, multi ? job.name : p.name]);
+      }
     }
     return s;
   }
@@ -925,7 +760,7 @@
     return { W, D, H };
   }
 
-  const api = { combineSheets, toCSV, toothLayout, outerDims, build, layout, layoutSteps, toSVG, toDXF, oddCount, offsetPoly, buildOutline, FACE_NAME };
+  const api = { combineSheets, toCSV, toothLayout, outerDims, build, layout, layoutSteps, planSetup, toSVG, toDXF, oddCount, offsetPoly, buildOutline, FACE_NAME };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.BoxGeom = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -30,15 +30,13 @@
     <button id="dl-svg" class="btn primary" title="Um único arquivo com todas as chapas, empilhadas">Baixar SVG</button>
     <button id="dl-dxf" class="btn primary" title="Um único arquivo com todas as chapas, empilhadas">Baixar DXF</button>
     <span class="sep"></span>
-    <label class="csv-qty" title="Quantidade de caixas: entra no plano de corte (SVG/DXF) e na lista CSV">
-      <span>Caixas</span><input type="number" id="csv-qty" data-k="qty" min="1" max="999" step="1">
-    </label>
+    <button id="add-cut" class="btn ghost" title="Guarda uma cópia da caixa do painel na lista de corte (a quantidade de cada caixa fica na lista, na aba Peças para corte)">Adicionar ao corte</button>
     <button id="dl-csv" class="btn ghost">Baixar CSV</button>
     <button type="button" class="help-btn" data-help="csv">?</button>
     <span class="sep"></span>
     <button id="save-json" class="btn ghost">Salvar projeto</button>
     <button id="load-json" class="btn ghost">Abrir projeto</button>
-    <button id="reset" class="btn ghost">Restaurar padrões</button>
+    <button id="reset" class="btn ghost" title="Volta só a caixa do painel aos valores padrão (a lista de corte e as opções da chapa ficam)">Restaurar caixa</button>
     <input type="file" id="file-json" accept=".json,application/json" hidden>
   </div>
 </header>
@@ -134,13 +132,21 @@
 
   <details>
     <summary>5. Chapa e organização <button type="button" class="help-btn inline" data-help="sheet">?</button></summary>
-    <p class="hint">O plano de corte organiza as peças em chapas (menos chapas e sobra contínua). Se não couberem em uma, as que sobram vão para a próxima. Ele é calculado na aba "Peças para corte" ou ao baixar. "Baixar SVG" e "Baixar DXF" no topo juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência).</p>
+    <p class="hint">O plano de corte organiza as peças em chapas (menos chapas, depois a maior sobra retangular). Se não couberem em uma, as que sobram vão para a próxima. Ele é calculado na aba "Peças para corte" ou ao baixar. "Baixar SVG" e "Baixar DXF" no topo juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência).</p>
     <div class="grid g2">
       <label>Largura da chapa (mm)<input type="number" step="any" min="50" data-k="sheetW"></label>
       <label>Altura da chapa (mm)<input type="number" step="any" min="50" data-k="sheetH"></label>
       <label>Espaço entre peças (mm)<input type="number" step="any" min="0" data-k="gap"></label>
       <label>Margem da chapa (mm)<input type="number" step="any" min="0" data-k="margin"></label>
     </div>
+    <div class="grain-title">Otimização do plano</div>
+    <p class="hint">Rápida: atualiza o plano enquanto você edita, com a aba "Peças para corte" aberta. Equilibrada: mais estratégias e uma busca curta (padrão; usada ao abrir a aba e ao baixar). Intensiva: busca até o tempo máximo, mostrando a melhor solução encontrada; pode ser interrompida.</p>
+    <div class="grid g2">
+      <label>Modo<select data-k="optMode"><option value="fast">Rápida</option><option value="balanced">Equilibrada</option><option value="intensive">Intensiva</option></select></label>
+      <label>Tempo máximo da intensiva (s)<input type="number" step="1" min="2" max="300" data-k="optTime"></label>
+      <label>Menor lado de sobra aproveitável (mm)<input type="number" step="any" min="0" data-k="minLeftover" title="Sobras com algum lado menor que isto não contam como aproveitáveis: não entram na classificação nem aparecem destacadas"></label>
+    </div>
+    <label class="check"><input type="checkbox" data-k="showLeftover"> Mostrar as sobras aproveitáveis de cada chapa (só na tela)</label>
     <div class="grain-title">Veio da chapa</div>
     <p class="hint">Direção do veio em relação à chapa (largura × altura).</p>
     <div id="grain-sheet" class="gsheet"></div>
@@ -163,9 +169,30 @@
     <div id="status-list" class="status-list" hidden></div>
   </div>
   <div id="pane2d" class="pane">
+    <div id="plan-tools" class="plan-tools">
+      <button type="button" id="list-chip" class="list-chip" aria-controls="cut-drawer" aria-expanded="false">Lista de corte</button>
+      <span class="zoom" role="group" aria-label="Zoom das chapas">
+        <span class="zl">Zoom</span>
+        <button type="button" class="zb" data-zoom="fit" title="A chapa inteira na área visível">Inteira</button>
+        <button type="button" class="zb" data-zoom="width" title="Largura da área">Largura</button>
+        <button type="button" class="zb" id="zoom-out" title="Diminuir">−</button>
+        <input type="number" id="zoom-pct" min="10" max="400" step="10" title="Zoom em % da largura da área"><span class="zl">%</span>
+        <button type="button" class="zb" id="zoom-in" title="Aumentar">+</button>
+      </span>
+    </div>
     <div id="preview"></div>
     <ul id="info"></ul>
   </div>
+  <aside id="cut-drawer" class="cut-drawer card" hidden aria-label="Lista de corte">
+    <div class="cut-head">
+      <strong>Lista de corte</strong>
+      <button type="button" id="cut-close" class="btn small" title="Fechar (Esc)">Fechar</button>
+    </div>
+    <p class="hint">Cada linha é uma caixa guardada como estava ao ser adicionada. Quantidade 0 deixa a caixa guardada, fora do plano. Caixas de espessuras diferentes vão para chapas separadas.</p>
+    <p id="cut-note" class="cut-note" hidden></p>
+    <div id="cut-list"></div>
+    <p class="cut-foot"><button type="button" id="cut-add2" class="btn small primary">Adicionar a caixa do painel</button></p>
+  </aside>
   <div id="pane3d" class="pane" hidden>
     <div id="stage" class="card">
       <div id="gl"></div>
@@ -185,6 +212,15 @@
 <div id="toast" role="status" hidden></div>
 
 <script src="vendor/three.min.js"></script>
+<script src="packing/rects.js"></script>
+<script src="packing/ranking.js"></script>
+<script src="packing/engine.js"></script>
+<script src="packing/strategies.js"></script>
+<script src="packing/refine.js"></script>
+<script src="packing/legacy.js"></script>
+<script src="packing/exact.js"></script>
+<script src="packing/search.js"></script>
+<script src="packing/plan.js"></script>
 <script src="geometry.js"></script>
 <script src="view3d.js"></script>
 <script src="app.js"></script>
