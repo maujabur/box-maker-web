@@ -1319,7 +1319,11 @@
     const sum = document.createElement('summary');
     sum.textContent = cut === total ? 'Excluir peças do plano' : `Excluir peças do plano · ${cut} de ${total} a cortar`;
     sum.title = 'Tira da lista peças que já foram produzidas ou que não serão produzidas agora (por exemplo, uma tampa a menos)';
+    if (cut !== total) det.classList.add('has');
     det.append(sum);
+    const list = document.createElement('div');
+    list.className = 'cut-excl-list';
+    det.append(list);
     det.open = exclOpen.has(e.id);
     det.ontoggle = () => { if (det.open) exclOpen.add(e.id); else exclOpen.delete(e.id); };
     res.panels.forEach(p => {
@@ -1340,13 +1344,13 @@
       const rest = document.createElement('small');
       rest.textContent = `a cortar: ${leftOf(e, p.name)}`;
       line.append(lab, inp, rest);
-      det.append(line);
+      list.append(line);
     });
     if (e.excluir && Object.keys(e.excluir).length) {
       const z = document.createElement('button');
-      z.type = 'button'; z.className = 'btn small'; z.textContent = 'Zerar exclusões';
+      z.type = 'button'; z.className = 'cut-excl-zero'; z.textContent = 'Zerar exclusões';
       z.onclick = () => { e.excluir = {}; listChanged(); };
-      det.append(z);
+      list.append(z);
     }
     return det;
   }

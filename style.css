@@ -377,11 +377,17 @@ details.m-info > summary::after { background: #5b8fe0; }
 .cut-btns .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .cut-btns .btn:disabled { opacity: .45; cursor: default; }
 .cut-foot { margin: 10px 0 2px; }
-.cut-excl { margin: 2px 0 8px; font-size: 12.5px; }
-.cut-excl summary { cursor: pointer; color: var(--accent); }
-.cut-excl-row { display: grid; grid-template-columns: 1fr 64px 90px; gap: 8px; align-items: center; margin: 4px 0; }
+/* "Excluir peças do plano": discreto, sem o cartão global de details */
+.cut-excl, .cut-excl[open] { background: none; border: 0; border-radius: 0; box-shadow: none; padding: 0; margin: 0 0 6px; font-size: 11.5px; }
+.cut-excl > summary { display: inline-flex; padding: 2px 0; font-weight: 400; font-size: 11.5px; color: var(--muted, #6b6b6b); }
+.cut-excl > summary:hover { color: var(--accent); }
+.cut-excl > summary::before { width: 5px; height: 5px; border-width: 1.5px; margin: 0 4px 0 1px; }
+.cut-excl.has > summary { color: #b26a00; }
+.cut-excl-list { margin: 4px 0 2px; padding-left: 10px; border-left: 2px solid var(--line); }
+.cut-excl-row { display: grid; grid-template-columns: 1fr 52px 78px; gap: 8px; align-items: center; margin: 2px 0; color: var(--ink); }
+.cut-excl-row input { padding: 2px 6px; font-size: 12px; height: 24px; }
 .cut-excl-row small { margin: 0; }
-.cut-excl > .btn { margin-top: 4px; border: 1px solid var(--line); background: var(--card-2); color: var(--ink); }
+.cut-excl-zero { margin: 4px 0 2px; padding: 0; border: 0; background: none; color: var(--accent); font-size: 11.5px; cursor: pointer; text-decoration: underline; }
 
 /* ---------- otimização (barra da visualização) ---------- */
 .opt-wrap { position: relative; flex: 0 0 auto; }
