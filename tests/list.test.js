@@ -47,3 +47,62 @@ test('CSV da lista: uma linha por peça de cada caixa, com a quantidade dela', (
   assert.ok(rows.some(r => r.includes(',3,,Baixa · Frente,Baixa')));
   assert.ok(!csv.includes('Zero'));
 });
+
+// ---------- excluir peças do plano (excl: { peça: n }) ----------
+const labelsOf = plan => plan.sheets.flatMap(sh => sh.items.map(it => it.label));
+const count = (plan, text) => labelsOf(plan).filter(l => l.includes(text)).length;
+
+test('excluir: 3 caixas com 1 lateral esquerda já pronta dão 2 esquerdas e 3 de cada outra peça', () => {
+  const plan = G.layout({ jobs: [{ res: A, qty: 3, name: 'Alta', excl: { left: 1 } }] }, conf);
+  assert.strictEqual(count(plan, 'Esquerda'), 2);
+  for (const f of ['Direita', 'Frente', 'Trás', 'Fundo', 'Tampa']) assert.strictEqual(count(plan, f), 3, f);
+  assert.strictEqual(labelsOf(plan).length, A.panels.length * 3 - 1);
+  assert.strictEqual(new Set(plan.sheets.flatMap(sh => sh.items.map(it => it.name))).size, labelsOf(plan).length, 'nomes únicos');
+});
+
+test('excluir: o plano mede válido e contém exatamente as peças restantes', () => {
+  const plan = G.layout({ jobs: [{ res: A, qty: 3, name: 'Alta', excl: { left: 1, lid: 2 } }] }, conf);
+  const left = A.panels.find(p => p.name === 'left'), lid = A.panels.find(p => p.name === 'lid');
+  const rest = [];
+  for (let c = 1; c <= 3; c++) for (const p of A.panels) {
+    if (p === left && c > 2) continue;
+    if (p === lid && c > 1) continue;
+    rest.push(p);
+  }
+  const m = H.measure(plan, rest, Object.assign({}, conf, { qty: 1 }));
+  assert.deepStrictEqual(m.errors, []);
+});
+
+test('excluir: tudo excluído (ou mais que a quantidade) tira a peça; sem exclusões o resultado não muda', () => {
+  const plan = G.layout({ jobs: [{ res: A, qty: 2, name: 'Alta', excl: { left: 2, lid: 9 } }] }, conf);
+  assert.strictEqual(count(plan, 'Esquerda'), 0);
+  assert.strictEqual(count(plan, 'Tampa'), 0);
+  assert.strictEqual(count(plan, 'Frente'), 2);
+  const a = G.layout({ jobs: [{ res: A, qty: 2, name: 'Alta' }] }, conf);
+  const b = G.layout({ jobs: [{ res: A, qty: 2, name: 'Alta', excl: {} }] }, conf);
+  const c = G.layout({ jobs: [{ res: A, qty: 2, name: 'Alta', excl: { left: 0, front: -3, back: 'x' } }] }, conf);
+  assert.deepStrictEqual(labelsOf(b).sort(), labelsOf(a).sort());
+  assert.deepStrictEqual(labelsOf(c).sort(), labelsOf(a).sort(), 'valores inválidos ou zero são ignorados');
+});
+
+test('excluir: a exclusão vale só para a caixa da linha', () => {
+  const plan = G.layout({ jobs: [{ res: A, qty: 2, name: 'Alta', excl: { left: 2 } }, { res: B, qty: 2, name: 'Baixa' }] }, conf);
+  assert.strictEqual(count(plan, 'Alta · Esquerda') + count(plan, 'Alta #1 · Esquerda') + count(plan, 'Alta #2 · Esquerda'), 0);
+  assert.strictEqual(labelsOf(plan).filter(l => l.startsWith('Baixa') && l.includes('Esquerda')).length, 2);
+});
+
+test('excluir: o CSV traz a quantidade restante e omite a peça totalmente excluída', () => {
+  const rows = G.toCSV({ jobs: [{ res: A, qty: 3, name: 'Alta', excl: { left: 1, lid: 3 }, t: 6, kerf: 0.1 }] }, conf, 'Lista')
+    .split('\r\n').filter(l => l.startsWith('P,'));
+  assert.strictEqual(rows.length, A.panels.length - 1);
+  assert.ok(rows.some(r => r.includes(',2,,Alta · Esquerda,Alta')));
+  assert.ok(rows.some(r => r.includes(',3,,Alta · Direita,Alta')));
+  assert.ok(!rows.some(r => r.includes('Tampa')));
+});
+
+test('excluir: pieceQty nunca passa de zero para baixo', () => {
+  assert.strictEqual(G.pieceQty(3, { left: 1 }, 'left'), 2);
+  assert.strictEqual(G.pieceQty(3, { left: 5 }, 'left'), 0);
+  assert.strictEqual(G.pieceQty(3, {}, 'left'), 3);
+  assert.strictEqual(G.pieceQty(3, undefined, 'left'), 3);
+});

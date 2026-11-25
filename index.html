@@ -131,7 +131,13 @@
   </details>
 
   <details>
-    <summary>5. Chapa e organização <button type="button" class="help-btn inline" data-help="sheet">?</button></summary>
+    <summary>5. Veio das peças <button type="button" class="help-btn inline" data-help="grain">?</button></summary>
+    <p class="hint">Em relação à peça montada: u = horizontal, v = vertical (a altura, nas paredes). Só tem efeito se a chapa tiver veio (seção 6). O veio das peças é da caixa: vai junto quando ela entra na lista de corte.</p>
+    <div id="grain-pieces" class="gtable"></div>
+  </details>
+
+  <details>
+    <summary>6. Chapa e organização <button type="button" class="help-btn inline" data-help="sheet">?</button></summary>
     <p class="hint">O plano de corte organiza as peças em chapas (menos chapas, depois a maior sobra retangular). Se não couberem em uma, as que sobram vão para a próxima. Ele é calculado na aba "Peças para corte" ou ao baixar. "Baixar SVG" e "Baixar DXF" no topo juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência).</p>
     <div class="grid g2">
       <label>Largura da chapa (mm)<input type="number" step="any" min="50" data-k="sheetW"></label>
@@ -139,20 +145,9 @@
       <label>Espaço entre peças (mm)<input type="number" step="any" min="0" data-k="gap"></label>
       <label>Margem da chapa (mm)<input type="number" step="any" min="0" data-k="margin"></label>
     </div>
-    <div class="grain-title">Otimização do plano</div>
-    <p class="hint">Rápida: atualiza o plano enquanto você edita, com a aba "Peças para corte" aberta. Equilibrada: mais estratégias e uma busca curta (padrão; usada ao abrir a aba e ao baixar). Intensiva: busca até o tempo máximo, mostrando a melhor solução encontrada; pode ser interrompida.</p>
-    <div class="grid g2">
-      <label>Modo<select data-k="optMode"><option value="fast">Rápida</option><option value="balanced">Equilibrada</option><option value="intensive">Intensiva</option></select></label>
-      <label>Tempo máximo da intensiva (s)<input type="number" step="1" min="2" max="300" data-k="optTime"></label>
-      <label>Menor lado de sobra aproveitável (mm)<input type="number" step="any" min="0" data-k="minLeftover" title="Sobras com algum lado menor que isto não contam como aproveitáveis: não entram na classificação nem aparecem destacadas"></label>
-    </div>
-    <label class="check"><input type="checkbox" data-k="showLeftover"> Mostrar as sobras aproveitáveis de cada chapa (só na tela)</label>
     <div class="grain-title">Veio da chapa</div>
     <p class="hint">Direção do veio em relação à chapa (largura × altura).</p>
     <div id="grain-sheet" class="gsheet"></div>
-    <div class="grain-title">Veio de cada peça</div>
-    <p class="hint">Em relação à peça montada: u = horizontal, v = vertical (a altura, nas paredes). Só tem efeito se a chapa tiver veio.</p>
-    <div id="grain-pieces" class="gtable"></div>
   </details>
 
   <p class="foot"><button id="reset2" class="btn ghost small">Restaurar todos os padrões</button></p>
@@ -165,6 +160,19 @@
       <button class="tab" data-tab="2d" role="tab">Peças para corte</button>
     </div>
     <div id="plan-bar" class="plan-bar" hidden></div>
+    <div id="opt-wrap" class="opt-wrap" hidden>
+      <button type="button" id="opt-btn" class="opt-btn" aria-expanded="false" aria-controls="opt-pop" title="Modo de otimização do plano e opções das sobras">Otimização</button>
+      <div id="opt-pop" class="opt-pop" hidden>
+        <div class="opt-head"><strong>Otimização do plano</strong> <button type="button" class="help-btn inline" data-help="opt">?</button></div>
+        <p class="hint">Rápida: atualiza o plano enquanto você edita. Equilibrada: mais estratégias e uma busca curta (padrão; usada ao abrir a aba e ao baixar). Intensiva: busca até o tempo máximo, mostrando a melhor solução encontrada; pode ser interrompida.</p>
+        <div class="grid g2">
+          <label>Modo<select data-k="optMode"><option value="fast">Rápida</option><option value="balanced">Equilibrada</option><option value="intensive">Intensiva</option></select></label>
+          <label>Tempo máximo da intensiva (s)<input type="number" step="1" min="2" max="300" data-k="optTime"></label>
+        </div>
+        <label>Menor lado de sobra aproveitável (mm)<input type="number" step="any" min="0" data-k="minLeftover" title="Sobras com algum lado menor que isto não contam como aproveitáveis: não entram na classificação nem aparecem destacadas"></label>
+        <label class="check"><input type="checkbox" data-k="showLeftover"> Mostrar as sobras aproveitáveis de cada chapa (só na tela)</label>
+      </div>
+    </div>
     <button type="button" id="status" class="status" hidden aria-expanded="false" aria-controls="status-list"></button>
     <div id="status-list" class="status-list" hidden></div>
   </div>
@@ -188,7 +196,7 @@
       <strong>Lista de corte</strong>
       <button type="button" id="cut-close" class="btn small" title="Fechar (Esc)">Fechar</button>
     </div>
-    <p class="hint">Cada linha é uma caixa guardada como estava ao ser adicionada. Quantidade 0 deixa a caixa guardada, fora do plano. Caixas de espessuras diferentes vão para chapas separadas.</p>
+    <p class="hint">Cada linha é uma caixa guardada como estava ao ser adicionada. Quantidade 0 deixa a caixa guardada, fora do plano. Em "Excluir peças do plano" você tira unidades de uma peça específica (já produzidas ou adiadas) sem mudar a quantidade da caixa. Caixas de espessuras diferentes vão para chapas separadas.</p>
     <p id="cut-note" class="cut-note" hidden></p>
     <div id="cut-list"></div>
     <p class="cut-foot"><button type="button" id="cut-add2" class="btn small primary">Adicionar a caixa do painel</button></p>

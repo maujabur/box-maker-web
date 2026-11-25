@@ -464,12 +464,20 @@
   }
 
   // lista de caixas da entrada (ver planSetup)
+  // excl: { nomeDaPeça: n } = unidades de cada peça que não entram no plano (já produzidas ou adiadas)
+  function exclOf(j) {
+    const o = {};
+    if (j && j.excl) for (const k of Object.keys(j.excl)) { const n = Math.round(+j.excl[k]); if (n > 0) o[k] = n; }
+    return o;
+  }
+  // quantidade a cortar de uma peça: a da caixa menos as excluídas (mínimo 0)
+  const pieceQty = (qty, excl, name) => Math.max(0, qty - ((excl && excl[name]) || 0));
   function jobsOf(input, cfg) {
     if (input && Array.isArray(input.jobs)) {
-      return input.jobs.map(j => ({ res: j.res, qty: Math.min(999, Math.max(0, Math.round(+j.qty || 0))), name: j.name || '', pieceGrain: j.pieceGrain || {} }))
+      return input.jobs.map(j => ({ res: j.res, qty: Math.min(999, Math.max(0, Math.round(+j.qty || 0))), name: j.name || '', pieceGrain: j.pieceGrain || {}, excl: exclOf(j) }))
         .filter(j => j.qty > 0);
     }
-    return [{ res: input, qty: Math.min(999, Math.max(1, Math.round(+cfg.qty || 1))), name: '', pieceGrain: cfg.pieceGrain || {} }];
+    return [{ res: input, qty: Math.min(999, Math.max(1, Math.round(+cfg.qty || 1))), name: '', pieceGrain: cfg.pieceGrain || {}, excl: {} }];
   }
   const slug = t => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'caixa';
 
@@ -491,6 +499,7 @@
       for (let c = 1; c <= job.qty; c++) {
         const copy = job.qty > 1 ? c : 0;
         for (const p of job.res.panels) {
+          if (c > pieceQty(job.qty, job.excl, p.name)) continue; // cópia excluída do plano
           const b = bbox(p.poly);
           const g = grainOf(p);
           let fixed = -1;
@@ -742,11 +751,14 @@
     s += csvRow(['@', 'Comprimento', 'Largura', 'Qtde', 'Veio', 'Rótulo', 'Grupo']);
     for (const job of jobs) {
       const pg = job.pieceGrain || {};
+      const excl = exclOf(job);
       for (const p of job.res.panels) {
+        const q = pieceQty(job.qty, excl, p.name);
+        if (q <= 0) continue; // peça totalmente excluída
         const b = bbox(p.poly);
         const w = b.x1 - b.x0, h = b.y1 - b.y0;
         const g = pg[p.name] === 'u' ? 'h' : pg[p.name] === 'v' ? 'v' : '';
-        s += csvRow(['P', w.toFixed(2), h.toFixed(2), job.qty, g, (multi ? job.name + ' · ' : '') + p.label, multi ? job.name : p.name]);
+        s += csvRow(['P', w.toFixed(2), h.toFixed(2), q, g, (multi ? job.name + ' · ' : '') + p.label, multi ? job.name : p.name]);
       }
     }
     return s;
@@ -760,7 +772,7 @@
     return { W, D, H };
   }
 
-  const api = { combineSheets, toCSV, toothLayout, outerDims, build, layout, layoutSteps, planSetup, toSVG, toDXF, oddCount, offsetPoly, buildOutline, FACE_NAME };
+  const api = { pieceQty, combineSheets, toCSV, toothLayout, outerDims, build, layout, layoutSteps, planSetup, toSVG, toDXF, oddCount, offsetPoly, buildOutline, FACE_NAME };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.BoxGeom = api;
 })(typeof window !== 'undefined' ? window : globalThis);

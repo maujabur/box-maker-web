@@ -70,6 +70,14 @@
   const uid = () => 'c' + Date.now().toString(36) + (uidSeq++).toString(36);
   // nome sugerido: medidas da caixa (a espessura aparece no grupo de chapas e na linha da lista)
   const boxName = b => `${+b.W}×${+b.D}×${+b.H}`;
+  // "Excluir" de cada linha da lista: { peça: n } = unidades da peça que ficam fora do plano (já produzidas ou
+  // adiadas). A quantidade a cortar da peça é a da linha menos isso (mínimo 0).
+  function cleanExcl(x) {
+    const o = {};
+    if (x && typeof x === 'object') for (const [k] of PIECES) { const n = Math.min(999, Math.max(0, Math.round(+x[k] || 0))); if (n > 0) o[k] = n; }
+    return o;
+  }
+  const leftOf = (e, name) => Math.max(0, e.qty - ((e.excluir && e.excluir[name]) || 0));
 
   // Mescla com os padrões para aceitar projetos antigos ou incompletos.
   function normalize(src, asBox) {
@@ -127,12 +135,13 @@
       id: typeof e.id === 'string' && e.id ? e.id : uid(),
       name: String(e.name || boxName(e.box)).slice(0, 80),
       qty: Math.min(999, Math.max(0, Math.round(+e.qty || 0))),
+      excluir: cleanExcl(e.excluir),
       box: boxOf(normalize(e.box, true)),
     }));
     // projetos antigos: "Caixas" (quantidade única) vira a lista com esta caixa
     if (src && !Array.isArray(src.cutList) && Math.round(+src.qty || 1) > 1) {
       const id = uid();
-      c.cutList = [{ id, name: boxName(c), qty: Math.min(999, Math.round(+src.qty)), box: boxOf(c) }];
+      c.cutList = [{ id, name: boxName(c), qty: Math.min(999, Math.round(+src.qty)), excluir: {}, box: boxOf(c) }];
       c.editing = id;
     }
     delete c.qty;
@@ -154,11 +163,15 @@
     teeth: `<strong>Dentes de encaixe</strong><p>Cada eixo (arestas verticais, fundo e tampa, em X e Y) tem uma largura alvo em mm e um número de divisões. Editar um recalcula o outro.</p><p>Divisões é sempre ímpar: as duas pontas são cantos lisos, que absorvem a sobra da divisão, e o miolo tem dentes e intervalos exatamente do tamanho digitado.</p><p>O chanfro arredonda a ponta dos dentes e a boca dos rasgos, nos dois lados do encaixe, para facilitar a montagem.</p>`,
     lid: `<strong>Fundo e tampa</strong><p>Por fora cobre as paredes; por dentro fica entre elas. Com dentes, o encaixe usa os mesmos dentes da seção 3; sem dentes, a peça é lisa, só encostada.</p><p><em>Recuo da tampa</em>: desloca para dentro o retângulo-guia da tampa (a base dos dentes, ou o fundo dos rasgos quando a tampa é por fora): guia = medida − 2 × (espessura + recuo). O tamanho da tampa, na ponta dos dentes, não muda. Não pode ser negativo; 0 = sem recuo.</p><p><em>Ajuste da tampa</em>: diferença total de largura entre os dentes e os rasgos da junção da tampa, independente da interferência da seção 1. Fica dividida meio a meio: positivo = aperto (o dente cresce metade e o rasgo encolhe metade); zero = encaixe nominal; negativo = folga (o dente encolhe metade e o rasgo cresce metade). Padrão −0,1 mm (folga). Marque "Ajuste da tampa igual à interferência geral" para a tampa seguir o valor da seção 1.</p>`,
     holes: `<strong>Furos oblongos</strong><p>Cada parede tem seu próprio conjunto de furos. Na tampa e no fundo, cada um dos quatro lados (frente, trás, esquerda, direita) tem o seu.</p><p>Horizontal: distância a partir do centro do lado, positivo para a direita (vista de fora, ou de pé diante do lado). Vertical: distância da borda até a borda mais próxima do furo. O furo é sempre paralelo ao lado.</p><p>"Centralizar" calcula o deslocamento vertical que deixa o furo no meio da parede (altura) ou do lado da tampa/fundo.</p>`,
-    sheet: `<strong>Chapa e organização</strong><p>O plano de corte organiza as peças em chapas do tamanho informado; o que não couber em uma vai para a próxima. Ele é calculado ao abrir a aba "Peças para corte", pelo botão "Calcular plano" e, se estiver desatualizado, ao baixar o SVG ou o DXF.</p><p>Critério, em ordem: menos chapas; depois, a maior sobra retangular do trabalho (medida na geometria, sem a margem, que é descarte); depois, mais área em sobras aproveitáveis (com os dois lados de pelo menos o "menor lado de sobra aproveitável", padrão 50 mm), em menos pedaços; depois, sobras mais largas: um vão junto de uma faixa livre vale mais que o mesmo vão preso entre peças (conta a área onde cabe um quadrado de 2 e de 3 vezes o menor lado aproveitável); por fim, peças mais juntas, com a sobra numa região só.</p><p>Modos de otimização: <em>Rápida</em> testa poucas combinações e atualiza o plano enquanto você edita (com a aba aberta); <em>Equilibrada</em> (padrão) testa vários algoritmos (MaxRects, Guillotine, prateleiras, blocos de peças iguais), uma busca exata por menos chapas e uma busca curta, sempre com o mesmo resultado para o mesmo projeto; <em>Intensiva</em> continua buscando até o tempo máximo e mostra a melhor solução encontrada até ali. "Parar" encerra e fica com a melhor.</p><p>Espaço entre peças: distância mínima entre os contornos já compensados (kerf e interferência). Com 0, as peças podem encostar, mas nunca se sobrepõem; as linhas coincidentes continuam sendo cortadas duas vezes (a fusão de linhas fica com o software da cortadora).</p><p>Lista de corte: "Adicionar ao corte", no topo, guarda uma cópia da caixa do painel. Na aba "Peças para corte", o botão "Lista de corte" abre a lista, onde cada caixa tem nome e quantidade (0 = guardada, fora do plano) e pode ser editada (carrega no painel), atualizada (grava o painel nela), duplicada ou removida. Com a lista vazia, o plano usa a caixa do painel. Caixas de espessuras diferentes vão para chapas separadas, e o SVG, o DXF e o CSV saem um arquivo por espessura. As peças ganham o nome da caixa e o número da cópia.</p><p>Zoom: "Inteira" mostra a chapa toda na área visível; "Largura" ocupa a largura; o campo em % é relativo à largura.</p><p>Veio: se a chapa tiver veio (horizontal ou vertical), cada peça marcada com veio só gira 90° se isso mantiver seu eixo de veio paralelo ao da chapa. Peças sem veio marcado giram livremente.</p><p>"Baixar SVG" e "Baixar DXF", no topo, juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência, não é corte).</p>`,
-    csv: `<strong>Lista de corte (CSV)</strong><p>Gera um arquivo com o tamanho de cada peça (sem furos nem dentes, que esse formato não representa), no formato do <a href="https://www.opticutter.com/cut-list-optimizer/import/csv" target="_blank" rel="noopener">Cutlist Optimizer</a> (opticutter.com).</p><p>Com a lista de corte vazia, o arquivo traz as peças da caixa do painel; com a lista, traz as peças de todas as caixas com quantidade, cada uma como um grupo, com a quantidade de cada caixa (um arquivo por espessura). A chapa e o veio informados na seção 5 já entram no arquivo.</p><p>O desenho detalhado de cada peça, com furos e dentes, continua saindo pelo SVG e pelo DXF.</p>`,
+    sheet: `<strong>Chapa e organização</strong><p>O plano de corte organiza as peças em chapas do tamanho informado; o que não couber em uma vai para a próxima. Ele é calculado ao abrir a aba "Peças para corte", pelo botão "Calcular plano" e, se estiver desatualizado, ao baixar o SVG ou o DXF.</p><p>O modo de otimização e as opções das sobras ficam no botão "Otimização", acima das chapas.</p><p>Espaço entre peças: distância mínima entre os contornos já compensados (kerf e interferência). Com 0, as peças podem encostar, mas nunca se sobrepõem; as linhas coincidentes continuam sendo cortadas duas vezes (a fusão de linhas fica com o software da cortadora).</p><p>Lista de corte: "Adicionar ao corte", no topo, guarda uma cópia da caixa do painel. Na aba "Peças para corte", o botão "Lista de corte" abre a lista, onde cada caixa tem nome e quantidade (0 = guardada, fora do plano) e pode ser editada (carrega no painel), atualizada (grava o painel nela), duplicada ou removida. "Excluir peças do plano", em cada linha, tira unidades de uma peça (já produzidas ou adiadas) sem mudar a quantidade da caixa; o plano e o CSV usam só o que resta. Com a lista vazia, o plano usa a caixa do painel. Caixas de espessuras diferentes vão para chapas separadas, e o SVG, o DXF e o CSV saem um arquivo por espessura. As peças ganham o nome da caixa e o número da cópia.</p><p>Zoom: "Inteira" mostra a chapa toda na área visível; "Largura" ocupa a largura; o campo em % é relativo à largura.</p><p>Veio da chapa: direção do veio em relação à chapa. O veio de cada peça fica na seção 5.</p><p>"Baixar SVG" e "Baixar DXF", no topo, juntam todas as chapas em um arquivo só, empilhadas, cada uma com seu contorno em azul (só de referência, não é corte).</p>`,
+    opt: `<strong>Otimização do plano</strong><p>Critério, em ordem: menos chapas; depois, a maior sobra retangular do trabalho (medida na geometria, sem a margem, que é descarte); depois, mais área em sobras aproveitáveis (com os dois lados de pelo menos o "menor lado de sobra aproveitável", padrão 50 mm), em menos pedaços; depois, sobras mais largas: um vão junto de uma faixa livre vale mais que o mesmo vão preso entre peças (conta a área onde cabe um quadrado de 2 e de 3 vezes o menor lado aproveitável); por fim, peças mais juntas, com a sobra numa região só.</p><p>Modos de otimização: <em>Rápida</em> testa poucas combinações e atualiza o plano enquanto você edita (com a aba aberta); <em>Equilibrada</em> (padrão) testa vários algoritmos (MaxRects, Guillotine, prateleiras, blocos de peças iguais), uma busca exata por menos chapas e uma busca curta, sempre com o mesmo resultado para o mesmo projeto; <em>Intensiva</em> continua buscando até o tempo máximo e mostra a melhor solução encontrada até ali. "Parar" encerra e fica com a melhor.</p><p>Menor lado de sobra aproveitável: sobras com algum lado menor que isso não contam (nem na classificação, nem no destaque da tela).</p>`,
+    grain: `<strong>Veio das peças</strong><p>Se a chapa tiver veio (horizontal ou vertical), cada peça marcada com veio só gira 90° se isso mantiver seu eixo de veio paralelo ao da chapa. Peças sem veio marcado giram livremente.</p><p>u = horizontal e v = vertical, em relação à peça montada (nas paredes, v é a altura). O veio é da caixa: vai junto quando ela entra na lista de corte.</p>`,
+    csv: `<strong>Lista de corte (CSV)</strong><p>Gera um arquivo com o tamanho de cada peça (sem furos nem dentes, que esse formato não representa), no formato do <a href="https://www.opticutter.com/cut-list-optimizer/import/csv" target="_blank" rel="noopener">Cutlist Optimizer</a> (opticutter.com).</p><p>Com a lista de corte vazia, o arquivo traz as peças da caixa do painel; com a lista, traz as peças de todas as caixas com quantidade, cada uma como um grupo, com a quantidade de cada caixa (um arquivo por espessura). A chapa e o veio da chapa informados na seção 6 já entram no arquivo.</p><p>O desenho detalhado de cada peça, com furos e dentes, continua saindo pelo SVG e pelo DXF.</p>`,
   };
   function initHelp() {
     const pop = $('#help-pop'), body = $('#help-pop-body');
+    // fora do cabeçalho: lá dentro o z-index só vale no contexto do cabeçalho e a gaveta da lista ficaria por cima
+    document.body.append(pop);
     let openBtn = null;
     const close = () => { pop.hidden = true; openBtn = null; };
     document.querySelectorAll('.help-btn').forEach(btn => {
@@ -445,6 +458,8 @@
     $('#pane3d').hidden = tab !== '3d';
     if (tab === '3d') { applyPiecesOpen(); renderPieces(); refresh3d(); }
     $('#plan-bar').hidden = tab !== '2d';
+    $('#opt-wrap').hidden = tab !== '2d';
+    if (tab !== '2d') setOptPop(false);
     $('#cut-drawer').hidden = !cfg.drawerOpen || tab !== '2d';
     if (tab === '2d') { applyZoom(); renderList(); }
     if (tab === '2d' && planPossible() && !planCurrent() && !(planJob && planJob.key === planKey())) computePlan(autoMode());
@@ -773,13 +788,20 @@
   // caixas que entram no plano: [{ id, name, qty, box, res?, error? }]
   function planEntries() {
     if (!cfg.cutList.length) return last ? [{ id: null, name: boxName(cfg), qty: 1, box: boxOf(cfg), res: last.res }] : [];
-    return cfg.cutList.filter(e => e.qty > 0).map(e => Object.assign({}, e, buildBox(e.box)));
+    return cfg.cutList.filter(e => e.qty > 0).map(e => Object.assign({}, e, buildBox(e.box)))
+      .filter(e => !e.res || e.res.panels.some(p => leftOf(e, p.name) > 0)); // linha com tudo excluído sai do plano
+  }
+  // linha que entra no plano: quantidade > 0 e alguma peça ainda a cortar
+  function inPlan(e) {
+    if (!(e.qty > 0)) return false;
+    const r = buildBox(e.box).res;
+    return !r || r.panels.some(p => leftOf(e, p.name) > 0);
   }
   // a configuração que muda o plano: chapa, distâncias, veio da chapa, menor sobra e as caixas
   function planKey() {
     const job = {};
     for (const k of PLAN_JOB_KEYS) job[k] = cfg[k];
-    const entries = cfg.cutList.length ? cfg.cutList.filter(e => e.qty > 0).map(e => [e.name, e.qty, e.box]) : [boxOf(cfg)];
+    const entries = cfg.cutList.length ? cfg.cutList.filter(e => e.qty > 0).map(e => [e.name, e.qty, e.box, e.excluir]) : [boxOf(cfg)];
     return JSON.stringify({ job, entries });
   }
   // plano em dia; com minMode, também exige que tenha sido calculado num modo pelo menos tão bom
@@ -816,7 +838,7 @@
     }
     const groups = [...byT.entries()].sort((a, b) => b[0] - a[0]).map(([t, list]) => ({
       t, label: tmm(t), entries: list,
-      setup: G.planSetup({ jobs: list.map(e => ({ res: e.res, qty: e.qty, name: e.name, pieceGrain: e.box.pieceGrain || {} })) }, conf),
+      setup: G.planSetup({ jobs: list.map(e => ({ res: e.res, qty: e.qty, excl: e.excluir, name: e.name, pieceGrain: e.box.pieceGrain || {} })) }, conf),
     }));
     // a intensiva divide o tempo entre os grupos
     if (groups.length > 1) groups.forEach(g => { g.setup.opts.timeLimit = Math.max(2, g.setup.opts.timeLimit / groups.length); });
@@ -916,7 +938,7 @@
     const nPieces = job.groups.reduce((a, g) => a + g.setup.problem.items.length, 0);
     if (anyGrain && job.groups.length === 1 && nPieces <= 36) {
       try {
-        const nf = G.layout({ jobs: g0.entries.map(e => ({ res: e.res, qty: e.qty, name: e.name, pieceGrain: e.box.pieceGrain })) }, Object.assign({}, conf, { grain: 'none', optMode: 'fast' })).sheets.length;
+        const nf = G.layout({ jobs: g0.entries.map(e => ({ res: e.res, qty: e.qty, excl: e.excluir, name: e.name, pieceGrain: e.box.pieceGrain })) }, Object.assign({}, conf, { grain: 'none', optMode: 'fast' })).sheets.length;
         grainNote = `Veio: ${chapas(lay.sheets.length)} com as restrições; ${chapas(nf)} sem restrição de veio (cálculo rápido).`;
       } catch (e) { /* ignora */ }
     }
@@ -1038,6 +1060,7 @@
   function renderPlan() {
     const ui = planBar();
     renderListChip();
+    renderOptBtn();
     ui.bar.classList.remove('stale', 'busy');
     ui.pr.hidden = true;
     ui.btn.hidden = true;
@@ -1048,8 +1071,8 @@
       shownPlan = null; shownStale = null;
       const prev = $('#preview');
       prev.className = '';
-      prev.innerHTML = cfg.cutList.length && !cfg.cutList.some(e => e.qty > 0)
-        ? '<div class="empty">Todas as caixas da lista estão com quantidade 0.</div>'
+      prev.innerHTML = cfg.cutList.length && !cfg.cutList.some(inPlan)
+        ? '<div class="empty">Não há nada a cortar: todas as caixas da lista estão com quantidade 0 ou com todas as peças excluídas.</div>'
         : '<div class="empty">Não há peças para mostrar: corrija o erro indicado.</div>';
       return;
     }
@@ -1108,7 +1131,7 @@
   function autoPlan() {
     if (cfg.tab !== '2d' || !planPossible() || planCurrent()) return;
     if (planJob && planJob.key === planKey()) return; // já há um cálculo desta configuração (ex.: intensiva)
-    const n = planEntries().reduce((a, e) => a + (e.res ? e.res.panels.length * e.qty : 0), 0);
+    const n = planEntries().reduce((a, e) => a + (e.res ? e.res.panels.reduce((s, p) => s + leftOf(e, p.name), 0) : 0), 0);
     if (n <= AUTO_FAST_MAX) computePlan('fast');
   }
 
@@ -1192,6 +1215,23 @@
     window.addEventListener('resize', () => { if (cfg.tab === '2d') applyZoom(); });
   }
 
+  // ---------- otimização (botão na barra da visualização) ----------
+  function setOptPop(open) {
+    const pop = $('#opt-pop'), btn = $('#opt-btn');
+    if (!pop) return;
+    pop.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  function renderOptBtn() {
+    const btn = $('#opt-btn');
+    if (btn) btn.textContent = `Otimização: ${MODE_NAME[cfg.optMode]}` + (cfg.optMode === 'intensive' ? ` (${cfg.optTime} s)` : '');
+  }
+  function initOpt() {
+    $('#opt-btn').onclick = ev => { ev.stopPropagation(); setOptPop($('#opt-pop').hidden); };
+    document.addEventListener('click', ev => { if (!$('#opt-pop').hidden && !ev.target.closest('#opt-wrap') && !ev.target.closest('#help-pop')) setOptPop(false); });
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') setOptPop(false); });
+  }
+
   // ---------- lista de corte ----------
   // Cada caixa da lista é uma cópia da caixa do painel no momento em que foi adicionada (ou atualizada).
   // "Editar" carrega a caixa no painel; "Atualizar" grava o painel de volta na caixa.
@@ -1214,7 +1254,7 @@
   function addToList() {
     flushUpdate();
     if (!last) { toast('A caixa do painel tem erro: corrija antes de adicionar ao corte.'); return; }
-    const e = { id: uid(), name: uniqueName(boxName(cfg)), qty: 1, box: boxOf(cfg) };
+    const e = { id: uid(), name: uniqueName(boxName(cfg)), qty: 1, excluir: {}, box: boxOf(cfg) };
     cfg.cutList.push(e);
     cfg.editing = e.id;
     toast(`"${e.name}" adicionada à lista de corte (${plural(cfg.cutList.length, 'caixa', 'caixas')}).`);
@@ -1239,7 +1279,7 @@
     listChanged();
   }
   function duplicateEntry(e) {
-    const c = { id: uid(), name: uniqueName(e.name), qty: e.qty, box: JSON.parse(JSON.stringify(e.box)) };
+    const c = { id: uid(), name: uniqueName(e.name), qty: e.qty, excluir: Object.assign({}, e.excluir), box: JSON.parse(JSON.stringify(e.box)) };
     cfg.cutList.splice(cfg.cutList.indexOf(e) + 1, 0, c);
     listChanged();
   }
@@ -1253,7 +1293,7 @@
   function renderListChip() {
     const chip = $('#list-chip');
     if (!chip) return;
-    const active = cfg.cutList.filter(e => e.qty > 0);
+    const active = cfg.cutList.filter(inPlan);
     const units = active.reduce((a, e) => a + e.qty, 0);
     chip.textContent = cfg.cutList.length
       ? `Lista de corte: ${caixas(cfg.cutList.length)}${active.length < cfg.cutList.length ? ` (${active.length} no plano)` : ''} · ${unidades(units)}`
@@ -1267,6 +1307,48 @@
     $('#cut-drawer').hidden = !cfg.drawerOpen || cfg.tab !== '2d';
     try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) { /* ignora */ }
     renderList();
+  }
+  // "Excluir" por peça: quantas unidades de cada peça da linha ficam fora do plano (já produzidas ou adiadas)
+  const exclOpen = new Set(); // linhas com o bloco aberto (a lista é redesenhada a cada mudança)
+  function exclBlock(e) {
+    const res = buildBox(e.box).res;
+    const det = document.createElement('details');
+    det.className = 'cut-excl';
+    if (!res) return document.createDocumentFragment(); // caixa com erro: sem peças para listar
+    const cut = res.panels.reduce((a, p) => a + leftOf(e, p.name), 0), total = res.panels.length * e.qty;
+    const sum = document.createElement('summary');
+    sum.textContent = cut === total ? 'Excluir peças do plano' : `Excluir peças do plano · ${cut} de ${total} a cortar`;
+    sum.title = 'Tira da lista peças que já foram produzidas ou que não serão produzidas agora (por exemplo, uma tampa a menos)';
+    det.append(sum);
+    det.open = exclOpen.has(e.id);
+    det.ontoggle = () => { if (det.open) exclOpen.add(e.id); else exclOpen.delete(e.id); };
+    res.panels.forEach(p => {
+      const line = document.createElement('div');
+      line.className = 'cut-excl-row';
+      const lab = document.createElement('span'); lab.textContent = p.label;
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.min = 0; inp.max = e.qty; inp.step = 1;
+      inp.value = Math.min(e.qty, (e.excluir && e.excluir[p.name]) || 0);
+      inp.title = `Unidades de "${p.label}" que não entram no plano (de ${e.qty})`;
+      inp.disabled = e.qty <= 0;
+      inp.onchange = () => {
+        const n = Math.min(e.qty, Math.max(0, Math.round(+inp.value || 0)));
+        e.excluir = Object.assign({}, e.excluir);
+        if (n > 0) e.excluir[p.name] = n; else delete e.excluir[p.name];
+        listChanged();
+      };
+      const rest = document.createElement('small');
+      rest.textContent = `a cortar: ${leftOf(e, p.name)}`;
+      line.append(lab, inp, rest);
+      det.append(line);
+    });
+    if (e.excluir && Object.keys(e.excluir).length) {
+      const z = document.createElement('button');
+      z.type = 'button'; z.className = 'btn small'; z.textContent = 'Zerar exclusões';
+      z.onclick = () => { e.excluir = {}; listChanged(); };
+      det.append(z);
+    }
+    return det;
   }
   function renderList() {
     renderListChip();
@@ -1296,7 +1378,7 @@
       const row = document.createElement('div');
       const isEd = e.id === cfg.editing;
       const modified = isEd && boxKey(e.box) !== pk;
-      row.className = 'cut-row' + (e.qty > 0 ? '' : ' off') + (isEd ? ' editing' : '');
+      row.className = 'cut-row' + (inPlan(e) ? '' : ' off') + (isEd ? ' editing' : '');
       const name = document.createElement('input');
       name.type = 'text'; name.value = e.name; name.className = 'cut-name'; name.maxLength = 80;
       name.title = 'Nome da caixa (aparece nas peças do plano)';
@@ -1319,7 +1401,7 @@
       const top = document.createElement('div'); top.className = 'cut-top';
       const ql = document.createElement('label'); ql.className = 'cut-ql'; ql.append('Qtd', qty);
       top.append(name, ql);
-      row.append(top, info, btns);
+      row.append(top, info, exclBlock(e), btns);
       body.append(row);
     });
   }
@@ -1356,7 +1438,7 @@
   }
   // nome base dos arquivos do plano: a caixa (lista vazia ou uma só caixa) ou o trabalho
   function planBaseName() {
-    const act = cfg.cutList.filter(e => e.qty > 0);
+    const act = cfg.cutList.filter(inPlan);
     if (act.length <= 1) {
       const b = act.length ? act[0].box : cfg;
       return `caixa_${b.W}x${b.D}x${b.H}_${b.t}mm` + (act.length && act[0].qty > 1 ? `_${act[0].qty}un` : '');
@@ -1411,7 +1493,7 @@
     const byT = new Map();
     for (const e of entries) { const t = +e.box.t; if (!byT.has(t)) byT.set(t, []); byT.get(t).push(e); }
     [...byT.entries()].forEach(([t, list], k) => {
-      const jobs = list.map(e => ({ res: e.res, qty: e.qty, name: e.name, pieceGrain: e.box.pieceGrain, t: e.box.t, kerf: e.box.kerf }));
+      const jobs = list.map(e => ({ res: e.res, qty: e.qty, excl: e.excluir, name: e.name, pieceGrain: e.box.pieceGrain, t: e.box.t, kerf: e.box.kerf }));
       const name = planBaseName() + (byT.size > 1 ? `_${t}mm` : '') + '_cutlist.csv';
       setTimeout(() => download(name, G.toCSV({ jobs }, cfg, `Lista de corte ${t} mm`), 'text/csv'), k * 400);
     });
@@ -1460,6 +1542,7 @@
   initHelp();
   initZoom();
   initList();
+  initOpt();
   showTab(cfg.tab);
   render();
 })();

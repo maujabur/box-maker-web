@@ -162,7 +162,7 @@ Pontos de compatibilidade a preservar:
 
 | Fase | Entrega | Mexe em | Risco |
 |---|---|---|---|
-| A | **Contador por face na lista de corte** (descontar peças feitas); plano e CSV usam o restante | app.js, lista, `planContext` | baixo |
+| A (**feita**) | **Contador por face na lista de corte** (descontar peças feitas); plano e CSV usam o restante | app.js, lista, `planContext` | baixo |
 | B | **Material, textura e espessura por face** (com a mesma espessura na caixa toda), textura "qualquer"; plano agrupa por esses campos; projeto padrão sem configuração (D7) | modelo, UI, `planContext` | médio |
 | C | **Cadastro de chapas** de várias medidas, estoque ilimitado ou limitado, veio por chapa, aviso "faltam x m²" | motor (`plan.js`, validação), UI | alto |
 | D | **Espessura diferente por face**, com encaixe derivado, com todas as faces levando dentes (etapa 1) | `build()`, `outerDims`, junções, tests | alto |
