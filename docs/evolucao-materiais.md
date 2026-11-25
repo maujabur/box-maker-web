@@ -170,7 +170,11 @@ Pontos de compatibilidade a preservar:
 
 A e B não dependem uma da outra. C depende de B. D depende de B e é independente de C. E depende de D.
 
-**Começar pela Fase A**, porque é a que mais falta hoje, é independente e tem risco baixo.
+**Começar pela Fase A**, porque é a que mais falta hoje, é independente e tem risco baixo. (Feita.)
+
+**Testes em cada fase.** Cada fase traz seus testes no mesmo commit, e a lógica nova vai para módulos sem DOM, como
+`cutlist.js`, para ser testada em Node. A Fase B é a primeira a criar telas novas (material, textura e espessura por
+face): antes de terminá-la, montar os **testes de navegador** descritos em [testes.md](testes.md).
 
 ## 6. Perguntas em aberto
 

@@ -72,12 +72,9 @@
   const boxName = b => `${+b.W}×${+b.D}×${+b.H}`;
   // "Excluir" de cada linha da lista: { peça: n } = unidades da peça que ficam fora do plano (já produzidas ou
   // adiadas). A quantidade a cortar da peça é a da linha menos isso (mínimo 0).
-  function cleanExcl(x) {
-    const o = {};
-    if (x && typeof x === 'object') for (const [k] of PIECES) { const n = Math.min(999, Math.max(0, Math.round(+x[k] || 0))); if (n > 0) o[k] = n; }
-    return o;
-  }
-  const leftOf = (e, name) => Math.max(0, e.qty - ((e.excluir && e.excluir[name]) || 0));
+  // As regras ficam em cutlist.js (testadas em Node). PIECES e BC.PIECE_KEYS devem ter as mesmas chaves.
+  const BC = window.BoxCut;
+  const leftOf = BC.leftOf;
 
   // Mescla com os padrões para aceitar projetos antigos ou incompletos.
   function normalize(src, asBox) {
@@ -131,13 +128,7 @@
     if (asBox) return c;
     // lista de corte: cada caixa é normalizada como um projeto (aceita caixas salvas por versões antigas)
     const list = Array.isArray(src && src.cutList) ? src.cutList : [];
-    c.cutList = list.filter(e => e && e.box).map(e => ({
-      id: typeof e.id === 'string' && e.id ? e.id : uid(),
-      name: String(e.name || boxName(e.box)).slice(0, 80),
-      qty: Math.min(999, Math.max(0, Math.round(+e.qty || 0))),
-      excluir: cleanExcl(e.excluir),
-      box: boxOf(normalize(e.box, true)),
-    }));
+    c.cutList = BC.normalizeList(list, { uid, boxName, normBox: b => boxOf(normalize(b, true)) });
     // projetos antigos: "Caixas" (quantidade única) vira a lista com esta caixa
     if (src && !Array.isArray(src.cutList) && Math.round(+src.qty || 1) > 1) {
       const id = uid();
@@ -788,20 +779,15 @@
   // caixas que entram no plano: [{ id, name, qty, box, res?, error? }]
   function planEntries() {
     if (!cfg.cutList.length) return last ? [{ id: null, name: boxName(cfg), qty: 1, box: boxOf(cfg), res: last.res }] : [];
-    return cfg.cutList.filter(e => e.qty > 0).map(e => Object.assign({}, e, buildBox(e.box)))
-      .filter(e => !e.res || e.res.panels.some(p => leftOf(e, p.name) > 0)); // linha com tudo excluído sai do plano
+    return BC.activeEntries(cfg.cutList, buildBox); // linha com tudo excluído sai do plano
   }
   // linha que entra no plano: quantidade > 0 e alguma peça ainda a cortar
-  function inPlan(e) {
-    if (!(e.qty > 0)) return false;
-    const r = buildBox(e.box).res;
-    return !r || r.panels.some(p => leftOf(e, p.name) > 0);
-  }
+  const inPlan = e => e.qty > 0 && BC.hasWork(e, buildBox(e.box).res);
   // a configuração que muda o plano: chapa, distâncias, veio da chapa, menor sobra e as caixas
   function planKey() {
     const job = {};
     for (const k of PLAN_JOB_KEYS) job[k] = cfg[k];
-    const entries = cfg.cutList.length ? cfg.cutList.filter(e => e.qty > 0).map(e => [e.name, e.qty, e.box, e.excluir]) : [boxOf(cfg)];
+    const entries = cfg.cutList.length ? BC.keyEntries(cfg.cutList) : [boxOf(cfg)];
     return JSON.stringify({ job, entries });
   }
   // plano em dia; com minMode, também exige que tenha sido calculado num modo pelo menos tão bom
@@ -838,7 +824,7 @@
     }
     const groups = [...byT.entries()].sort((a, b) => b[0] - a[0]).map(([t, list]) => ({
       t, label: tmm(t), entries: list,
-      setup: G.planSetup({ jobs: list.map(e => ({ res: e.res, qty: e.qty, excl: e.excluir, name: e.name, pieceGrain: e.box.pieceGrain || {} })) }, conf),
+      setup: G.planSetup({ jobs: BC.toJobs(list) }, conf),
     }));
     // a intensiva divide o tempo entre os grupos
     if (groups.length > 1) groups.forEach(g => { g.setup.opts.timeLimit = Math.max(2, g.setup.opts.timeLimit / groups.length); });
@@ -938,7 +924,7 @@
     const nPieces = job.groups.reduce((a, g) => a + g.setup.problem.items.length, 0);
     if (anyGrain && job.groups.length === 1 && nPieces <= 36) {
       try {
-        const nf = G.layout({ jobs: g0.entries.map(e => ({ res: e.res, qty: e.qty, excl: e.excluir, name: e.name, pieceGrain: e.box.pieceGrain })) }, Object.assign({}, conf, { grain: 'none', optMode: 'fast' })).sheets.length;
+        const nf = G.layout({ jobs: BC.toJobs(g0.entries) }, Object.assign({}, conf, { grain: 'none', optMode: 'fast' })).sheets.length;
         grainNote = `Veio: ${chapas(lay.sheets.length)} com as restrições; ${chapas(nf)} sem restrição de veio (cálculo rápido).`;
       } catch (e) { /* ignora */ }
     }
@@ -1131,7 +1117,7 @@
   function autoPlan() {
     if (cfg.tab !== '2d' || !planPossible() || planCurrent()) return;
     if (planJob && planJob.key === planKey()) return; // já há um cálculo desta configuração (ex.: intensiva)
-    const n = planEntries().reduce((a, e) => a + (e.res ? e.res.panels.reduce((s, p) => s + leftOf(e, p.name), 0) : 0), 0);
+    const n = planEntries().reduce((a, e) => a + BC.totalLeft(e, e.res), 0);
     if (n <= AUTO_FAST_MAX) computePlan('fast');
   }
 
@@ -1279,7 +1265,7 @@
     listChanged();
   }
   function duplicateEntry(e) {
-    const c = { id: uid(), name: uniqueName(e.name), qty: e.qty, excluir: Object.assign({}, e.excluir), box: JSON.parse(JSON.stringify(e.box)) };
+    const c = BC.cloneEntry(e, uid(), uniqueName(e.name));
     cfg.cutList.splice(cfg.cutList.indexOf(e) + 1, 0, c);
     listChanged();
   }
@@ -1315,7 +1301,7 @@
     const det = document.createElement('details');
     det.className = 'cut-excl';
     if (!res) return document.createDocumentFragment(); // caixa com erro: sem peças para listar
-    const cut = res.panels.reduce((a, p) => a + leftOf(e, p.name), 0), total = res.panels.length * e.qty;
+    const cut = BC.totalLeft(e, res), total = BC.totalAll(e, res);
     const sum = document.createElement('summary');
     sum.textContent = cut === total ? 'Excluir peças do plano' : `Excluir peças do plano · ${cut} de ${total} a cortar`;
     sum.title = 'Tira da lista peças que já foram produzidas ou que não serão produzidas agora (por exemplo, uma tampa a menos)';
@@ -1497,7 +1483,7 @@
     const byT = new Map();
     for (const e of entries) { const t = +e.box.t; if (!byT.has(t)) byT.set(t, []); byT.get(t).push(e); }
     [...byT.entries()].forEach(([t, list], k) => {
-      const jobs = list.map(e => ({ res: e.res, qty: e.qty, excl: e.excluir, name: e.name, pieceGrain: e.box.pieceGrain, t: e.box.t, kerf: e.box.kerf }));
+      const jobs = BC.toJobs(list);
       const name = planBaseName() + (byT.size > 1 ? `_${t}mm` : '') + '_cutlist.csv';
       setTimeout(() => download(name, G.toCSV({ jobs }, cfg, `Lista de corte ${t} mm`), 'text/csv'), k * 400);
     });

@@ -45,9 +45,10 @@ A biblioteca three.js está em `vendor/` (licença MIT), embutida localmente —
 ## Estrutura do projeto
 - `index.html`, `style.css` — interface.
 - `app.js` — estado da configuração, ligação dos controles, exportação de arquivos.
+- `cutlist.js` — regras da lista de corte (normalização, peças excluídas, o que entra no plano). Sem dependências, testável em Node.
 - `geometry.js` — toda a geometria (dentes, furos), preparação do plano de corte e exportação SVG/DXF/CSV. Sem dependências.
 - `packing/` — motor do plano de corte (estratégias, classificação, busca, Web Worker). Sem dependências; ver [docs/motor.md](docs/motor.md).
 - `tests/` — testes e benchmarks (Node 18+, sem dependências): `node --test tests/` e `node tests/bench.js`.
-- `docs/` — documentação técnica do motor e benchmarks.
+- `docs/` — documentação técnica do motor, benchmarks, [estratégia de testes](docs/testes.md) e [planejamento de materiais e chapas](docs/evolucao-materiais.md).
 - `view3d.js` — visualização 3D (usa `vendor/three.min.js`).
 - `vendor/` — three.js (MIT), embutido para funcionar offline/GitHub Pages.
