@@ -73,6 +73,7 @@ summary .help-btn { margin-left: auto; }
   font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer;
   border: 1px solid transparent; transition: background .15s, border-color .15s, transform .05s;
 }
+a.btn { text-decoration: none; display: inline-block; }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.primary:hover { background: var(--accent-hover); }
